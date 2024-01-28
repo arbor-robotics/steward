@@ -1,0 +1,13 @@
+title: Steward
+description: A friendly tree-planting companion developed by Arbor Robotics at CMU.
+theme: just-the-docs
+
+color_scheme: arbor # see _sass/
+
+url: https://just-the-docs.github.io
+# logo: "/assets/images/arbor-logo.png"
+favicon_ico: "/assets/images/arbor-logo.png"
+
+aux_links:
+  "Github Repo":
+    - "https://github.com/arbor-robotics/steward"
