@@ -296,9 +296,25 @@ $red-200: $red-200 !default;
 $red-300: $red-300 !default;
 
 // Now set our color scheme
+// https://martinikings.bandcamp.com/album/its-ukulele-time
 $green-050: #C3D5C9;
 $green-100: #9FBCA9;
 $green-200: #81A78F;
-$green-300:#4B6C57;
+$green-300:#257466;
+
+$yellow-300: #DEB31F;
+
+$red-300: #EE3134;
+
+$neutral: #FFF5D9;
+$sidebar-color: $neutral;
+$code-background-color: $neutral;
+
+.nav-list .nav-list-item .nav-list-link:hover, .nav-list .nav-list-item .nav-list-link.active {
+    background-image: none !important;
+}
 
 $link-color: $green-300;
+$body-background-color: $neutral;
+$search-background-color: $neutral;
+$table-background-color: $neutral;
