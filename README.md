@@ -1,2 +1,3 @@
 # steward
-All code for the Digital Steward robot.
+
+A friendly tree-planting companion developed by Arbor Robotics at CMU.
