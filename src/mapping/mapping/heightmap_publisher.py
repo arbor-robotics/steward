@@ -29,6 +29,7 @@ class HeightmapPublisher(Node):
 
     def publishMap(self) -> None:
         self.map_pub.publish(self.grid_msg)
+        self.get_logger().debug("Publishing map!")
 
     def declareParams(self) -> None:
         # Declare the map name as a ROS parameter

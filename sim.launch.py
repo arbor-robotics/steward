@@ -46,7 +46,8 @@ def generate_launch_description():
         parameters=[{
             'map_dir': map_directory,
             'resolution': 1.0,  # m/pixel
-            'origin': [-661.07, -423.11, -43.73]
+            'origin': [-661.07, -423.11, 0.0]
+            # 'origin': [-661.07, -423.11, -43.73]
         }]
     )
 
