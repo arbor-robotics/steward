@@ -20,7 +20,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'heightmap_publisher = state_estimation.heightmap_publisher:main'
+            'heightmap_publisher = mapping.heightmap_publisher:main'
         ],
     },
 )

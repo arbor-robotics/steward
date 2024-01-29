@@ -21,12 +21,13 @@ def generate_launch_description():
     steward_root = path.dirname(path.realpath(__file__))
     environ['STEWARD_ROOT'] = steward_root
     xacro_name = 'steward.urdf.xacro'
-    # mesh_path = path.join(steward_root, 'data', 'meshes', 'steward')
+    mesh_path = path.join(steward_root, 'data', 'meshes', 'steward')
+    map_directory = path.join(steward_root, 'data', 'maps', 'schenley')
 
     doc = xacro.process_file(
         path.join(steward_root, 'config', xacro_name),
         mappings={
-            'mesh_path': path.join(steward_root, 'data', 'meshes', 'steward')
+            'mesh_path': mesh_path
         }
     )
     robot_desc = doc.toprettyxml(indent='   ')
@@ -37,7 +38,16 @@ def generate_launch_description():
         parameters=[{
             'robot_description': robot_desc
         }]
-        # arguments=[path.join(steward_root, 'config', 'steward.urdf')]
+    )
+
+    heightmap_publisher = Node(
+        package='mapping',
+        executable='heightmap_publisher',
+        parameters=[{
+            'map_dir': map_directory,
+            'resolution': 1.0,  # m/pixel
+            'origin': [-661.07, -423.11, -43.73]
+        }]
     )
 
     rviz = Node(
@@ -59,10 +69,9 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
-        pose_to_transform_broadcaster,
-
-        # MISC
+        heightmap_publisher,
         joint_state_publisher,
+        pose_to_transform_broadcaster,
         urdf_publisher,
         # rviz,
     ])
