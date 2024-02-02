@@ -296,7 +296,7 @@ $red-200: $red-200 !default;
 $red-300: $red-300 !default;
 
 // Now set our color scheme
-// https://martinikings.bandcamp.com/album/its-ukulele-time
+// https://coolors.co/79a48a-fdf3ed-bf9aca-ec9a29-131e2a
 $green-050: #C3D5C9;
 $green-100: #9FBCA9;
 $green-200: #81A78F;
@@ -306,7 +306,14 @@ $yellow-300: #DEB31F;
 
 $red-300: #EE3134;
 
-$neutral: #FFF5D9;
+$seashell: #FDF3ED;
+$seafoam: #79A48A;
+$seafoam-dark: #5B866C;
+$wisteria: #BF9ACA;
+$gambodge: #EC9A29;
+$rich-black: #131E2A;
+
+$neutral: $seashell;
 $sidebar-color: $neutral;
 $code-background-color: $neutral;
 
@@ -314,7 +321,7 @@ $code-background-color: $neutral;
     background-image: none !important;
 }
 
-$link-color: $green-300;
+$link-color: $seafoam-dark;
 $body-background-color: $neutral;
 $search-background-color: $neutral;
 $table-background-color: $neutral;
