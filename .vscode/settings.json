@@ -4,6 +4,6 @@
     "/home/main/Arbor/steward/install",
     "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/",
     "/opt/ros/humble/local/lib/python3.10/dist-packages/",
-    "./build/steward_msgs/rosidl_generator_py"
+    "./install/steward_msgs/local/lib/python3.10/dist-packages"
   ]
 }

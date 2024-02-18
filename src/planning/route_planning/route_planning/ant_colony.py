@@ -1,6 +1,10 @@
 import random as rn
 import numpy as np
 from numpy.random import choice as np_choice
+from tqdm import tqdm
+
+
+# FROM: https://github.com/Akavall/AntColonyOptimization/blob/master/ant_colony.py
 
 
 class AntColony(object):
@@ -29,7 +33,7 @@ class AntColony(object):
         self.alpha = alpha
         self.beta = beta
 
-    def run(self):
+    def run(self, progress_cb):
         shortest_path = None
         all_time_shortest_path = ("placeholder", np.inf)
         for i in range(self.n_iterations):
@@ -37,10 +41,11 @@ class AntColony(object):
             self.spread_pheronome(all_paths, self.n_best,
                                   shortest_path=shortest_path)
             shortest_path = min(all_paths, key=lambda x: x[1])
-            print(shortest_path)
+            # print(shortest_path)
             if shortest_path[1] < all_time_shortest_path[1]:
                 all_time_shortest_path = shortest_path
             self.pheromone = self.pheromone * self.decay
+            progress_cb(i)
         return all_time_shortest_path
 
     def spread_pheronome(self, all_paths, n_best, shortest_path):
