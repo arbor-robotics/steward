@@ -8,6 +8,20 @@ url: https://just-the-docs.github.io
 # logo: "/assets/images/arbor-logo.png"
 favicon_ico: "/assets/images/arbor-logo.png"
 
+callouts:
+  extra:
+    title: Extra Info
+    color: blue
+  important:
+    title: Important
+    color: yellow
+  warning:
+    title: Warning
+    color: red
+  new:
+    title: New
+    color: green
+
 aux_links:
   "Github Repo":
     - "https://github.com/arbor-robotics/steward"

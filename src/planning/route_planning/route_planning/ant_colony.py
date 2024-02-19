@@ -33,7 +33,7 @@ class AntColony(object):
         self.alpha = alpha
         self.beta = beta
 
-    def run(self, progress_cb):
+    def run(self):
         shortest_path = None
         all_time_shortest_path = ("placeholder", np.inf)
         for i in range(self.n_iterations):
@@ -45,7 +45,6 @@ class AntColony(object):
             if shortest_path[1] < all_time_shortest_path[1]:
                 all_time_shortest_path = shortest_path
             self.pheromone = self.pheromone * self.decay
-            progress_cb(i)
         return all_time_shortest_path
 
     def spread_pheronome(self, all_paths, n_best, shortest_path):

@@ -20,7 +20,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'aco_route_planner = route_planning.aco_route_planner:main'
+            'route_planner = route_planning.route_planner:main'
         ],
     },
 )
