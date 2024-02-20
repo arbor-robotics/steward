@@ -2,3 +2,6 @@ install/
 build/
 log/
 *.pyc
+.vscode/
+__pycache__/
+.jekyll-cache/
