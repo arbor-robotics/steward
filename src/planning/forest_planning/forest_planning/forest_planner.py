@@ -1,8 +1,7 @@
 import numpy as np
 import rclpy
 from rclpy.node import Node, ParameterDescriptor, ParameterType
-from rclpy.qos import (DurabilityPolicy, HistoryPolicy, QoSProfile,
-                       ReliabilityPolicy)
+from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from steward_msgs.msg import ForestPlan
 from nav_msgs.msg import OccupancyGrid
 from geometry_msgs.msg import Point
@@ -14,27 +13,29 @@ from std_msgs.msg import Header
 
 
 class RoutePlanner(Node):
-
     def __init__(self):
-        super().__init__('route_planner')
+        super().__init__("route_planner")
 
         self.setUpParameters()
 
-        height_map_sub = self.create_subscription(OccupancyGrid, '/map/height', self.heightMapCb, 10)
-        planting_bounds_sub = self.create_subscription(OccupancyGrid, '/map/planting_bounds', self.plantingBoundsCb, 10)
+        height_map_sub = self.create_subscription(
+            OccupancyGrid, "/map/height", self.heightMapCb, 10
+        )
+        planting_bounds_sub = self.create_subscription(
+            OccupancyGrid, "/map/planting_bounds", self.plantingBoundsCb, 10
+        )
 
-        self.full_route_pub = self.create_publisher(
-            Route, '/planning/full_route', 10)
+        self.full_route_pub = self.create_publisher(Route, "/planning/full_route", 10)
 
         fake_plan = self.createFakeForestPlan()
         self.forestPlanCb(fake_plan)
 
     def getHeader(self) -> Header:
         msg = Header()
-        msg.frame_id = 'map'  # routes are in the map frame
+        msg.frame_id = "map"  # routes are in the map frame
         msg.stamp = self.get_clock().now().to_msg()
         return msg
-    
+
     def heightMapCb(self, msg: OccupancyGrid):
         self.get_logger().info("Got height map!")
 
@@ -45,8 +46,7 @@ class RoutePlanner(Node):
         msg = ForestPlan()
         msg.header = self.getHeader()
 
-        planting_points = self.createPlantingPoints(
-            seedling_count, distance=64)
+        planting_points = self.createPlantingPoints(seedling_count, distance=64)
 
         for idx, point in enumerate(planting_points):
             point_msg = Point()
@@ -60,7 +60,6 @@ class RoutePlanner(Node):
 
         return msg
 
-
     def setUpParameters(self):
         pass
         # use_fasttsp_param_desc = ParameterDescriptor()
@@ -70,13 +69,14 @@ class RoutePlanner(Node):
         # use_fasttspparam = self.declare_parameter(
         #     "use_fasttsp", True, use_fasttsp_param_desc)
 
-    def createPlantingPoints(self, quantity: int, distance: float = 100.0, use_seed=True) -> np.ndarray:
+    def createPlantingPoints(
+        self, quantity: int, distance: float = 100.0, use_seed=True
+    ) -> np.ndarray:
         if use_seed:
             rng = np.random.default_rng(99999)
         else:
             rng = np.random.default_rng()
-        points = rng.uniform(-distance, distance,
-                             (quantity, 2))  # 2D coordinates
+        points = rng.uniform(-distance, distance, (quantity, 2))  # 2D coordinates
         return points
 
 
@@ -94,5 +94,5 @@ def main(args=None):
     rclpy.shutdown()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

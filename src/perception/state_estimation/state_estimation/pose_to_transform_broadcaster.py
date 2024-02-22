@@ -10,28 +10,28 @@ from tf2_ros import TransformBroadcaster
 
 
 class PoseToTransformBroadcaster(Node):
-
     def __init__(self):
-        super().__init__('pose_to_transform_broadcaster')
+        super().__init__("pose_to_transform_broadcaster")
 
         sensor_qos_profile = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
             durability=DurabilityPolicy.VOLATILE,
             history=HistoryPolicy.KEEP_LAST,
-            depth=10
+            depth=10,
         )
 
         self.tf_broadcaster = TransformBroadcaster(self)
 
         # TODO: Parameterize topic name
         self.pose_subscription = self.create_subscription(
-            PoseWithCovarianceStamped, '/gnss/pose', self.poseCb, sensor_qos_profile)
+            PoseWithCovarianceStamped, "/gnss/pose", self.poseCb, sensor_qos_profile
+        )
 
     def poseCb(self, msg: PoseWithCovarianceStamped):
         t = TransformStamped()
 
         t.header = msg.header
-        t.child_frame_id = 'base_link'  # TODO: Change to 'gnss'
+        t.child_frame_id = "base_link"  # TODO: Change to 'gnss'
         t.transform.translation.x = msg.pose.pose.position.x
         t.transform.translation.y = msg.pose.pose.position.y
         t.transform.translation.z = msg.pose.pose.position.z
@@ -54,5 +54,5 @@ def main(args=None):
     rclpy.shutdown()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

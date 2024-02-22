@@ -8,7 +8,6 @@ from tqdm import tqdm
 
 
 class AntColony(object):
-
     def __init__(self, distances, n_ants, n_best, n_iterations, decay, alpha=1, beta=1):
         """
         Args:
@@ -21,7 +20,7 @@ class AntColony(object):
             beta (int or float): exponent on distance, higher beta give distance more weight. Default=1
 
         Example:
-            ant_colony = AntColony(german_distances, 100, 20, 2000, 0.95, alpha=1, beta=2)          
+            ant_colony = AntColony(german_distances, 100, 20, 2000, 0.95, alpha=1, beta=2)
         """
         self.distances = distances
         self.pheromone = np.ones(self.distances.shape) / len(distances)
@@ -38,8 +37,7 @@ class AntColony(object):
         all_time_shortest_path = ("placeholder", np.inf)
         for i in range(self.n_iterations):
             all_paths = self.gen_all_paths()
-            self.spread_pheronome(all_paths, self.n_best,
-                                  shortest_path=shortest_path)
+            self.spread_pheronome(all_paths, self.n_best, shortest_path=shortest_path)
             shortest_path = min(all_paths, key=lambda x: x[1])
             # print(shortest_path)
             if shortest_path[1] < all_time_shortest_path[1]:
@@ -72,8 +70,7 @@ class AntColony(object):
         visited.add(start)
         prev = start
         for i in range(len(self.distances) - 1):
-            move = self.pick_move(
-                self.pheromone[prev], self.distances[prev], visited)
+            move = self.pick_move(self.pheromone[prev], self.distances[prev], visited)
             path.append((prev, move))
             prev = move
             visited.add(move)
@@ -84,7 +81,7 @@ class AntColony(object):
         pheromone = np.copy(pheromone)
         pheromone[list(visited)] = 0
 
-        row = pheromone ** self.alpha * ((1.0 / dist) ** self.beta)
+        row = pheromone**self.alpha * ((1.0 / dist) ** self.beta)
 
         norm_row = row / row.sum()
         move = np_choice(self.all_inds, 1, p=norm_row)[0]
