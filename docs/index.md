@@ -17,6 +17,8 @@ Stu's custom code is entirely open-source. That means that it's free to use and 
 
 - Ubuntu 22.04 LTS
 - ROS2 Humble (https://docs.ros.org/en/humble/Installation/Ubuntu-Install-Debians.html)
+- [pre-commit](https://pre-commit.com/#installation)
+  - `$ pip install pre-commit && pre-commit --version`
 
 # Installation
 

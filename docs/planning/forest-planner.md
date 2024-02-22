@@ -16,22 +16,22 @@ title: Forest Planner
 
 #### ROS Params:
 
-None so far.
+- `grid_resolution` (float): The size of the Forest Plan's cells. This should be compatible with both the height map and planting bounds map such that $$res_{forest plan} = res_{input}^n$$
 
 ## Planting bounds
+
 The Forest Planner subscribes to `/map/planting_bounds`, which is of type `nav_msgs/OccupancyGrid`. This grid should have the same physical bounds as the height map (`/map/height`), and its cell resolution should be compatible such that one cell in the planting bounds grid corresponds to one, four, 16, etc cells in the height map.
 
 Cells in the planting bound grid may take the following values:
 
-| Value (int) | Description                                          |
-| ----- | ---------------------------------------------------- |
-| 0     | Keep out                                             |
-| 1     | Plant here                                           |
-| 2     | May enter, but do not plant here                     |
+| Value (int) | Description                      |
+| ----------- | -------------------------------- |
+| 0           | Keep out                         |
+| 1           | Plant here                       |
+| 2           | May enter, but do not plant here |
 
 ![Example of a planting bounds grid](/assets/images/planting-bounds-grid-example.png)
 <small>Example of a planting bounds grid, where 0=black, 1=white, 2=gray.</small>
-
 
 ## Considerations
 
