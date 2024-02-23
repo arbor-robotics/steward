@@ -42,7 +42,7 @@ def generate_launch_description():
             {
                 "map_dir": map_directory,
                 "resolution": 1.0,  # m/pixel
-                "origin": [-661.07, -423.11, 0.0]
+                "origin": [-661.07, -423.11, 0.0],
                 # 'origin': [-661.07, -423.11, -43.73]
             }
         ],
@@ -64,12 +64,15 @@ def generate_launch_description():
         package="state_estimation", executable="pose_to_transform_broadcaster"
     )
 
+    forest_planner = Node(package="forest_planning", executable="forest_planner")
+
     return LaunchDescription(
         [
-            heightmap_publisher,
-            joint_state_publisher,
-            pose_to_transform_broadcaster,
-            urdf_publisher,
+            forest_planner
+            # heightmap_publisher,
+            # joint_state_publisher,
+            # pose_to_transform_broadcaster,
+            # urdf_publisher,
             # rviz,
         ]
     )

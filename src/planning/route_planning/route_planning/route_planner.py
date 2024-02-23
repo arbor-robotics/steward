@@ -34,7 +34,7 @@ class RoutePlanner(Node):
         msg.stamp = self.get_clock().now().to_msg()
         return msg
 
-    def createFakeForestPlan(self, seedling_count=550) -> ForestPlan:
+    def createFakeForestPlan(self, seedling_count=12000) -> ForestPlan:
         msg = ForestPlan()
         msg.header = self.getHeader()
 
@@ -52,7 +52,7 @@ class RoutePlanner(Node):
 
         return msg
 
-    def forestPlanCb(self, forest_plan_msg: ForestPlan, do_plotting=False) -> None:
+    def forestPlanCb(self, forest_plan_msg: ForestPlan, do_plotting=True) -> None:
         self.get_logger().debug(
             f"Got a forest plan with {len(forest_plan_msg.points)} seedlings"
         )
@@ -76,6 +76,8 @@ class RoutePlanner(Node):
                 distances.astype(np.uint16), force="tomatrix", checks=False
             )
             self.get_logger().debug(f"Using Fast-TCP.")
+            print("Calculating route.")
+
             route = np.asarray(fast_tsp.find_tour(distances.astype(int)))
 
         else:
@@ -93,6 +95,7 @@ class RoutePlanner(Node):
             route = ant_colony.run()
             route = np.asarray(route[0])[:, 0]
 
+        print("Done!")
         self.get_logger().debug(f"Routing took {time() - start} seconds")
 
         # Form a Route message

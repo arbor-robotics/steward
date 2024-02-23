@@ -10,6 +10,9 @@ from tqdm import tqdm, trange
 from scipy.spatial.distance import pdist, squareform
 from matplotlib import pyplot as plt
 from std_msgs.msg import Header
+from PIL import Image, ImageOps
+from skimage import data, color
+from skimage.transform import rescale, resize, downscale_local_mean
 
 
 class RoutePlanner(Node):
@@ -18,17 +21,12 @@ class RoutePlanner(Node):
 
         self.setUpParameters()
 
-        height_map_sub = self.create_subscription(
-            OccupancyGrid, "/map/height", self.heightMapCb, 10
-        )
-        planting_bounds_sub = self.create_subscription(
+        self.create_subscription(OccupancyGrid, "/map/height", self.heightMapCb, 10)
+        self.create_subscription(
             OccupancyGrid, "/map/planting_bounds", self.plantingBoundsCb, 10
         )
 
-        self.full_route_pub = self.create_publisher(Route, "/planning/full_route", 10)
-
-        fake_plan = self.createFakeForestPlan()
-        self.forestPlanCb(fake_plan)
+        self.forest_plan = self.createForestPlan()
 
     def getHeader(self) -> Header:
         msg = Header()
@@ -42,32 +40,56 @@ class RoutePlanner(Node):
     def plantingBoundsCb(self, msg: OccupancyGrid):
         self.get_logger().info("Got planting bounds map!")
 
-    def createFakeForestPlan(self, seedling_count=550) -> ForestPlan:
+    def createForestPlan(self, seedling_count=550) -> ForestPlan:
         msg = ForestPlan()
         msg.header = self.getHeader()
 
-        planting_points = self.createPlantingPoints(seedling_count, distance=64)
+        # TODO: Pull from parameter
+        # bounds_image_path = self.get_parameter("bounds_map_path").value
+        # self.get_logger().info(str(type(bounds_image_path)))
+        # self.get_logger().info(bounds_image_path)
+        # bounds_img = Image.open(bounds_image_path)
 
-        for idx, point in enumerate(planting_points):
-            point_msg = Point()
-            point_msg.x = point[0]
-            point_msg.y = point[1]
-            msg.points.append(point_msg)
-            msg.ids.append(idx)
+        imagery_img = Image.open("data/maps/schenley/imagery.png")
+        # imagery_img = ImageOps.grayscale(imagery_img)
+        imagery_img = np.asarray(imagery_img)
+        print(imagery_img.shape)
+        imagery_img_rescaled = rescale(imagery_img, 2.5, channel_axis=2)
+        plt.imshow(imagery_img_rescaled)
+        plt.show()
 
-            # Empty for now. We can put JSON or something here later.
-            msg.plant_data.append("{}")
+        imagery_img_pil = Image.fromarray(np.uint8(imagery_img_rescaled)).convert("RGB")
+        imagery_img_pil.save("data/maps/schenley/imagery_rescaled.png")
+
+        bounds_img = Image.open("data/maps/schenley/planting-bounds.png")
+        bounds_img = ImageOps.grayscale(bounds_img)
+
+        bounds_img = np.asarray(bounds_img)
+
+        # meters per pixel side. TODO: Read this from MapMetaData message
+        IMAGE_RES = 1.0
+
+        TARGET_RES = 0.4  # meters per pixel side
+
+        scale_factor = IMAGE_RES / TARGET_RES
+
+        bounds_img_rescaled = rescale(bounds_img, scale_factor)
+
+        print(bounds_img_rescaled.shape)
+
+        # if (bounds_img.shape
+
+        plt.imshow(bounds_img_rescaled)
+        plt.show()
+        # print(bounds_img)
 
         return msg
 
     def setUpParameters(self):
-        pass
-        # use_fasttsp_param_desc = ParameterDescriptor()
-        # use_fasttsp_param_desc.description = \
-        #     "Use Fast-TCP instead of Ant Colony Optimization. Defaults to True."
-        # use_fasttsp_param_desc.type = ParameterType.PARAMETER_BOOL
-        # use_fasttspparam = self.declare_parameter(
-        #     "use_fasttsp", True, use_fasttsp_param_desc)
+        bounds_map_path_param_desc = ParameterDescriptor()
+        bounds_map_path_param_desc.description = "File path to planting bounds image"
+        bounds_map_path_param_desc.type = ParameterType.PARAMETER_STRING
+        self.declare_parameter("bounds_map_path", True, bounds_map_path_param_desc)
 
     def createPlantingPoints(
         self, quantity: int, distance: float = 100.0, use_seed=True
