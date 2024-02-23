@@ -40,48 +40,35 @@ class RoutePlanner(Node):
     def plantingBoundsCb(self, msg: OccupancyGrid):
         self.get_logger().info("Got planting bounds map!")
 
-    def createForestPlan(self, seedling_count=550) -> ForestPlan:
-        msg = ForestPlan()
-        msg.header = self.getHeader()
+    def createForestPlan(self, target_seedling_count=12000) -> ForestPlan:
+        msg = OccupancyGrid()
 
-        # TODO: Pull from parameter
-        # bounds_image_path = self.get_parameter("bounds_map_path").value
-        # self.get_logger().info(str(type(bounds_image_path)))
-        # self.get_logger().info(bounds_image_path)
-        # bounds_img = Image.open(bounds_image_path)
+        GRID_SIZE = 318  # px
 
-        imagery_img = Image.open("data/maps/schenley/imagery.png")
-        # imagery_img = ImageOps.grayscale(imagery_img)
-        imagery_img = np.asarray(imagery_img)
-        print(imagery_img.shape)
-        imagery_img_rescaled = rescale(imagery_img, 2.5, channel_axis=2)
-        plt.imshow(imagery_img_rescaled)
+        # We're basically creating a grayscale picture.
+        plan = np.zeros((GRID_SIZE, GRID_SIZE), dtype=np.uint8)
+
+        current_seedling_count = 0
+
+        rng = np.random.default_rng()
+
+        while current_seedling_count < target_seedling_count:
+            # pick a random pixel
+            random_idx = rng.uniform(low=0, high=GRID_SIZE, size=2)
+
+            random_idx = np.floor(random_idx).astype(int)
+            print(random_idx)
+            # mark it
+            plan[random_idx[0], random_idx[1]] = 1
+
+            # increment the count
+            current_seedling_count += 1
+
+        plt.imshow(plan)
+        plt.title(f"Forest plan with {target_seedling_count} seedlings, 0.2m/px")
+        plt.xlabel("x (pixels)")
+        plt.xlabel("y (pixels)")
         plt.show()
-
-        imagery_img_pil = Image.fromarray(np.uint8(imagery_img_rescaled)).convert("RGB")
-        imagery_img_pil.save("data/maps/schenley/imagery_rescaled.png")
-
-        bounds_img = Image.open("data/maps/schenley/planting-bounds.png")
-        bounds_img = ImageOps.grayscale(bounds_img)
-
-        bounds_img = np.asarray(bounds_img)
-
-        # meters per pixel side. TODO: Read this from MapMetaData message
-        IMAGE_RES = 1.0
-
-        TARGET_RES = 0.4  # meters per pixel side
-
-        scale_factor = IMAGE_RES / TARGET_RES
-
-        bounds_img_rescaled = rescale(bounds_img, scale_factor)
-
-        print(bounds_img_rescaled.shape)
-
-        # if (bounds_img.shape
-
-        plt.imshow(bounds_img_rescaled)
-        plt.show()
-        # print(bounds_img)
 
         return msg
 

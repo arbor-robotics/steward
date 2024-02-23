@@ -75,6 +75,22 @@ Planting density, which we will measure in trees per acre, varies widely based o
 {: .extra }
 When foresters calculate planting density, they also consider _basal area_. In the United States, basal area is the cross-sectional area of a tree's trunk at breast height (4.5 feet, 1.5 m) in square feet. This includes the bark. Basal area can also be expressed in acres, which is the sum of the basal area of each tree within a given acre. See this video by the [Alabama Extension](https://www.youtube.com/watch?v=8EmbJe4tVPQ).
 
+### Species
+
+Long-term, we'd like to support hundreds, perhaps thousands, of tree species. For now, though, we're targeting the specific climate of Pittsburgh, where [Appalachian oak forest](https://envirothonpa.org/documents/2-1_ForestTypesPA_001.pdf) is dominant. We will therefore start with seven supported species:
+
+| Scientific name           | Common name         | Forest layer |
+| ------------------------- | ------------------- | ------------ |
+| *Amelanchier arborea*     | common serviceberry | Understory   |
+| *Nyssa sylvatica*         | black tupelo        | Understory   |
+| *Acer rubrum*             | red maple           | Canopy       |
+| *Carya ovata*             | shagbark hickory    | Canopy       |
+| *Quercus montana*         | chestnut oak        | Canopy       |
+| *Quercus rubra*           | northern red oak    | Canopy       |
+| *Liriodendron tulipifera* | Tulip tree          | Emergent     |
+
+
+
 [1]: https://thundersaidenergy.com/downloads/reforestation-what-planting-density-for-seedlings/
 [2]: https://www.oregonmetro.gov/news/power-trees
 [3]: https://gatrees.org/wp-content/uploads/2020/03/HowManyTreesShouldIPlantJuly2011.pdf
