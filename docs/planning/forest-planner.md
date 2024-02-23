@@ -30,8 +30,8 @@ Cells in the planting bound grid may take the following values:
 | 1           | Plant here                       |
 | 2           | May enter, but do not plant here |
 
-![Example of a planting bounds grid](/assets/images/planting-bounds-grid-example.png)
-<small>Example of a planting bounds grid, where 0=black, 1=white, 2=gray.</small>
+![Left to right, down: Planting bounds map, forest plan, height map, satellite imagery](/assets/images/forest-planner-subplots.png)
+<small>Forest plan data for Flagstaff Hill (Schenley Park). In the planting bounds, yellow="enter but don't plant" and teal="plant here." The Forest Plan is the node's output; everything else is an input.</small>
 
 ## Format of forest plans
 
