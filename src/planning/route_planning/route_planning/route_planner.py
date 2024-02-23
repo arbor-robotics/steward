@@ -1,5 +1,6 @@
 import numpy as np
 import rclpy
+from builtin_interfaces.msg import Time as RosTime
 from route_planning.ant_colony import AntColony
 from rclpy.node import Node, ParameterDescriptor, ParameterType
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
@@ -11,6 +12,7 @@ from scipy.spatial.distance import pdist, squareform
 import fast_tsp
 from matplotlib import pyplot as plt
 from std_msgs.msg import Header
+from nav_msgs.msg import OccupancyGrid
 
 
 class RoutePlanner(Node):
@@ -19,14 +21,29 @@ class RoutePlanner(Node):
 
         self.setUpParameters()
 
+        self.last_time_plan_received = -1.0
+        self.cached_route_msg = None
+
         forest_plan_sub = self.create_subscription(
-            ForestPlan, "/planning/forest_plan", self.forestPlanCb, 10
+            OccupancyGrid, "/planning/forest_plan", self.forestPlanCb, 10
         )
 
         self.full_route_pub = self.create_publisher(Route, "/planning/full_route", 10)
 
-        fake_plan = self.createFakeForestPlan()
-        self.forestPlanCb(fake_plan)
+        ROUTE_PUB_FREQ = 0.5  # Hz. TODO: Parameterize this.
+        self.route_pub_timer = self.create_timer(
+            1 / ROUTE_PUB_FREQ, self.publishCachedRoute
+        )
+
+        # fake_plan = self.createFakeForestPlan()
+        # self.forestPlanCb(fake_plan)
+
+    def publishCachedRoute(self) -> None:
+        if self.cached_route_msg is None:
+            self.get_logger().warning("Route not yet calculated. Waiting to publish.")
+            return
+
+        self.full_route_pub.publish(self.cached_route_msg)
 
     def getHeader(self) -> Header:
         msg = Header()
@@ -34,39 +51,63 @@ class RoutePlanner(Node):
         msg.stamp = self.get_clock().now().to_msg()
         return msg
 
-    def createFakeForestPlan(self, seedling_count=12000) -> ForestPlan:
-        msg = ForestPlan()
-        msg.header = self.getHeader()
+    def getPointsFromOccupancyGrid(
+        self, occupancy_grid: OccupancyGrid, do_plotting=False
+    ):
+        h = occupancy_grid.info.height
+        w = occupancy_grid.info.width
+        grid_data = np.asarray(occupancy_grid.data).reshape(h, w)
 
-        planting_points = self.createPlantingPoints(seedling_count, distance=64)
+        if do_plotting:
+            fig, axs = plt.subplots(1, 2)
+            axs[0].imshow(grid_data)
 
-        for idx, point in enumerate(planting_points):
-            point_msg = Point()
-            point_msg.x = point[0]
-            point_msg.y = point[1]
-            msg.points.append(point_msg)
-            msg.ids.append(idx)
+        pixel_indices = np.asarray(np.where(grid_data > 0)).T
 
-            # Empty for now. We can put JSON or something here later.
-            msg.plant_data.append("{}")
+        # Swap columns so that x is the first column
+        pixel_indices[:, [0, 1]] = pixel_indices[:, [1, 0]]
 
-        return msg
+        # Invert the y axis to be right-handed
+        pixel_indices[:, 1] = (-pixel_indices[:, 1]) + h
 
-    def forestPlanCb(self, forest_plan_msg: ForestPlan, do_plotting=True) -> None:
-        self.get_logger().debug(
-            f"Got a forest plan with {len(forest_plan_msg.points)} seedlings"
-        )
+        map_points = (
+            pixel_indices.astype(np.float64) * occupancy_grid.info.resolution
+        )  # convert from pixels to meters
+
+        # Now translate by the Occ. Grid's origin
+        grid_origin = occupancy_grid.info.origin.position
+        map_points[:, 0] += grid_origin.x
+        map_points[:, 1] += grid_origin.y
+
+        if do_plotting:
+            plt.gca().set_aspect("equal")  # square aspect ratio for plotting
+            axs[1].scatter(map_points[:, 0], map_points[:, 1])
+            print(map_points)
+            plt.show()
+
+        return map_points
+
+    def rosTimeToSeconds(self, rostime: RosTime) -> float:
+        return rostime.sec + 1e9 * rostime.nanosec
+
+    def forestPlanCb(self, forest_plan_msg: OccupancyGrid, do_plotting=False) -> None:
+
+        if self.last_time_plan_received >= self.rosTimeToSeconds(
+            forest_plan_msg.info.map_load_time
+        ):
+            self.get_logger().debug("Skipping stale Forest Plan.")
+            return
+        else:
+            self.last_time_plan_received = self.rosTimeToSeconds(
+                forest_plan_msg.info.map_load_time
+            )
 
         # Convert list of ROS Point messages to np array
-        planting_points = []
-        for point_msg in forest_plan_msg.points:
-            point_msg: Point
-            planting_points.append([point_msg.x, point_msg.y])
-        planting_points = np.asarray(planting_points)
+        planting_points = self.getPointsFromOccupancyGrid(forest_plan_msg)
 
-        print("Calculating distances.")
+        self.get_logger().debug("Calculating distances.")
         distances = pdist(planting_points)
-        print("Converting distances to square form.")
+        self.get_logger().debug("Converting distances to square form.")
         use_fasttsp = self.get_parameter("use_fasttsp").value
 
         start = time()  # For measuring runtime
@@ -76,7 +117,7 @@ class RoutePlanner(Node):
                 distances.astype(np.uint16), force="tomatrix", checks=False
             )
             self.get_logger().debug(f"Using Fast-TCP.")
-            print("Calculating route.")
+            self.get_logger().debug("Calculating route.")
 
             route = np.asarray(fast_tsp.find_tour(distances.astype(int)))
 
@@ -95,20 +136,23 @@ class RoutePlanner(Node):
             route = ant_colony.run()
             route = np.asarray(route[0])[:, 0]
 
-        print("Done!")
-        self.get_logger().debug(f"Routing took {time() - start} seconds")
+        self.get_logger().debug(f"Done. Routing took {time() - start} seconds")
 
         # Form a Route message
         route_msg = Route()
         route_msg.header = self.getHeader()
 
-        for route_idx in route:
-            route_msg.points.append(forest_plan_msg.points[route_idx])
-            route_msg.ids.append(forest_plan_msg.ids[route_idx])
+        for i, route_idx in enumerate(route):
+            point_msg = Point()
+            point_msg.x, point_msg.y = planting_points[route_idx].tolist()
+            route_msg.points.append(point_msg)
+            route_msg.ids.append(i)  # TODO: Do we need IDs for each seedling?
 
         # Publish the Route message
         assert len(route) == len(route_msg.ids), "Route ID length mismatch"
-        self.full_route_pub.publish(route_msg)
+
+        self.cached_route_msg = route_msg
+        # self.full_route_pub.publish(route_msg)
 
         if do_plotting:
 
@@ -134,41 +178,7 @@ class RoutePlanner(Node):
             "Use Fast-TCP instead of Ant Colony Optimization. Defaults to True."
         )
         use_fasttsp_param_desc.type = ParameterType.PARAMETER_BOOL
-        use_fasttspparam = self.declare_parameter(
-            "use_fasttsp", True, use_fasttsp_param_desc
-        )
-
-    def acoProgressCb(self, iter: int):
-        print(iter)
-
-    def createPlantingPoints(
-        self, quantity: int, distance: float = 100.0, use_seed=True
-    ) -> np.ndarray:
-        if use_seed:
-            rng = np.random.default_rng(99999)
-        else:
-            rng = np.random.default_rng()
-        points = rng.uniform(-distance, distance, (quantity, 2))  # 2D coordinates
-        return points
-
-    def getDistances(self, points: np.ndarray):
-        assert points.ndim == 2 and points.shape[1] == 2, "Points must be 2D."
-
-        N = points.shape[0]  # number of points
-
-        distances = np.zeros((N, N))
-
-        for i in trange(len(points), desc="Getting distances"):
-            for j in range(len(points)):
-                if i == j:  # points along a diagonal should be np.inf
-                    distances[i, j] = np.inf
-                else:
-                    ptA = points[i, :]
-                    ptB = points[j, :]
-                    distance = np.linalg.norm(ptA - ptB)
-                    distances[i, j] = distance
-
-        return distances
+        self.declare_parameter("use_fasttsp", True, use_fasttsp_param_desc)
 
 
 def main(args=None):

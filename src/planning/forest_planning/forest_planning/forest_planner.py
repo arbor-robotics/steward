@@ -40,10 +40,11 @@ class RoutePlanner(Node):
 
         self.forestPlan = self.createForestPlan()
 
-        PLAN_PUBLISH_RATE = 0.2  # Hz. TODO: Parameterize this.
+        PLAN_PUBLISH_RATE = 0.5  # Hz. TODO: Parameterize this.
         plan_pub_timer = self.create_timer(1 / PLAN_PUBLISH_RATE, self.publishPlan)
 
     def publishPlan(self) -> None:
+        self.get_logger().info("Publishing Forest Plan")
         self.forestPlanPub.publish(self.forestPlan)
 
     def getHeader(self) -> Header:
@@ -157,15 +158,14 @@ class RoutePlanner(Node):
             plt.show()
 
         flattened_plan = plan.flatten().astype(int)
-        print(np.max(flattened_plan))
-        print(np.min(flattened_plan))
 
         msg.data = flattened_plan.tolist()
         msg.header = self.getHeader()
         msg.info.height = plan.shape[0]
         msg.info.width = plan.shape[1]
         msg.info.resolution = RES
-        # msg.info.origin TODO
+        msg.info.origin.position.x = -20.0  # ENU. Rough estimate!
+        msg.info.origin.position.y = -129.7
         msg.info.map_load_time = msg.header.stamp
 
         self.get_logger().info(f"Forest Plan generated in {time() - startTime} seconds")
