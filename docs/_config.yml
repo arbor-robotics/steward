@@ -8,6 +8,8 @@ url: https://just-the-docs.github.io
 # logo: "/assets/images/arbor-logo.png"
 favicon_ico: "/assets/images/arbor-logo.png"
 
+math: mathjax
+
 callouts:
   extra:
     title: Extra Info
