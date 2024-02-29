@@ -70,11 +70,13 @@ def generate_launch_description():
         parameters=[{"minimum_spacing": 4.0}],
     )
     route_planner = Node(package="route_planning", executable="route_planner")
+    mvp_controller = Node(package="motion_control", executable="mvp_controller")
 
     return LaunchDescription(
         [
             forest_planner,
             route_planner,
+            mvp_controller,
             heightmap_publisher,
             joint_state_publisher,
             pose_to_transform_broadcaster,
