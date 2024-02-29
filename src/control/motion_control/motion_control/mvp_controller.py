@@ -130,16 +130,17 @@ class RoutePlanner(Node):
 
         if yaw_error < math.radians(-10):
             self.get_logger().info("TURN RIGHT")
-            command_msg.angular.z = -angular_twist_val
             command_msg.linear.x = 0.5
         elif yaw_error > math.radians(10):
             self.get_logger().info("TURN LEFT")
-            command_msg.angular.z = angular_twist_val
+            command_msg.angular.z = -angular_twist_val
             command_msg.linear.x = 0.5
         else:
+            command_msg.angular.z = 0.0
             command_msg.linear.x = 1.0
             self.get_logger().info("DRIVE STRAIGHT")
 
+        command_msg.angular.z = yaw_error
         self.twistPub.publish(command_msg)
 
     def pathCb(self, msg: Path):
