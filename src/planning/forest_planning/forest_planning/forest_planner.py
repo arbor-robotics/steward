@@ -24,7 +24,7 @@ class BoundCell:
 
 class RoutePlanner(Node):
     def __init__(self):
-        super().__init__("route_planner")
+        super().__init__("forest_planner")
 
         self.setUpParameters()
 
@@ -33,9 +33,17 @@ class RoutePlanner(Node):
             OccupancyGrid, "/map/planting_bounds", self.plantingBoundsCb, 10
         )
 
+        # https://docs.ros.org/en/humble/Concepts/Intermediate/About-Quality-of-Service-Settings.html
+        map_qos = QoSProfile(
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+            reliability=ReliabilityPolicy.RELIABLE,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1,
+        )
+
         # TODO: Create proper QoS profile.
-        self.forestPlanPub = self.create_publisher(
-            OccupancyGrid, "/planning/forest_plan", 10
+        self.forest_plan_pub = self.create_publisher(
+            OccupancyGrid, "/planning/forest_plan", map_qos
         )
 
         self.forestPlan = self.createForestPlan()
@@ -44,8 +52,8 @@ class RoutePlanner(Node):
         plan_pub_timer = self.create_timer(1 / PLAN_PUBLISH_RATE, self.publishPlan)
 
     def publishPlan(self) -> None:
-        self.get_logger().info("Publishing Forest Plan")
-        self.forestPlanPub.publish(self.forestPlan)
+        self.get_logger().debug("Publishing Forest Plan")
+        self.forest_plan_pub.publish(self.forestPlan)
 
     def getHeader(self) -> Header:
         msg = Header()
@@ -54,7 +62,8 @@ class RoutePlanner(Node):
         return msg
 
     def heightMapCb(self, msg: OccupancyGrid):
-        self.get_logger().info("Got height map!")
+        # self.get_logger().debug("Got height map!")
+        pass
 
     def plantingBoundsCb(self, msg: OccupancyGrid):
         self.get_logger().info("Got planting bounds map!")
@@ -63,7 +72,13 @@ class RoutePlanner(Node):
         self, target_seedling_count=10000, do_plotting=False
     ) -> OccupancyGrid:
 
-        self.get_logger().info("Generating Forest Plan.")
+        RES = 0.2  # m per pixel side TODO parameterize this
+        MINIMUM_SPACING_METERS = self.get_parameter("minimum_spacing").value
+        MINIMUM_SPACING_PX = np.floor(MINIMUM_SPACING_METERS / RES)
+
+        self.get_logger().info(
+            f"Generating Forest Plan with {MINIMUM_SPACING_METERS} meter spacing"
+        )
         startTime = time()
 
         msg = OccupancyGrid()
@@ -86,7 +101,6 @@ class RoutePlanner(Node):
             self.get_logger().warning("Planting bounds map is not square.")
 
         GRID_SIZE = bounds.shape[0]  # px
-        RES = 0.2  # m per pixel side
 
         if do_plotting:
             fig, axs = plt.subplots(
@@ -107,10 +121,6 @@ class RoutePlanner(Node):
         plan = np.zeros_like(bounds)
 
         current_seedling_count = 0
-
-        MINIMUM_SPACING_METERS = 0.5
-        MINIMUM_SPACING_PX = 5
-        # MINIMUM_SPACING_PX = np.floor(MINIMUM_SPACING_METERS / RES)
 
         rng = np.random.default_rng()
 
@@ -168,7 +178,9 @@ class RoutePlanner(Node):
         msg.info.origin.position.y = -129.7
         msg.info.map_load_time = msg.header.stamp
 
-        self.get_logger().info(f"Forest Plan generated in {time() - startTime} seconds")
+        self.get_logger().info(
+            f"Forest Plan generated with {current_seedling_count} seedlings"
+        )
 
         return msg
 
@@ -178,15 +190,12 @@ class RoutePlanner(Node):
         bounds_map_path_param_desc.type = ParameterType.PARAMETER_STRING
         self.declare_parameter("bounds_map_path", True, bounds_map_path_param_desc)
 
-    def createPlantingPoints(
-        self, quantity: int, distance: float = 100.0, use_seed=True
-    ) -> np.ndarray:
-        if use_seed:
-            rng = np.random.default_rng(99999)
-        else:
-            rng = np.random.default_rng()
-        points = rng.uniform(-distance, distance, (quantity, 2))  # 2D coordinates
-        return points
+        minimum_spacing_param_desc = ParameterDescriptor()
+        minimum_spacing_param_desc.description = (
+            "Target planting density, in seedlings per meter."
+        )
+        minimum_spacing_param_desc.type = ParameterType.PARAMETER_DOUBLE
+        self.declare_parameter("minimum_spacing", 1.0, minimum_spacing_param_desc)
 
 
 def main(args=None):

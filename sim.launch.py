@@ -64,11 +64,17 @@ def generate_launch_description():
         package="state_estimation", executable="pose_to_transform_broadcaster"
     )
 
-    forest_planner = Node(package="forest_planning", executable="forest_planner")
+    forest_planner = Node(
+        package="forest_planning",
+        executable="forest_planner",
+        parameters=[{"minimum_spacing": 4.0}],
+    )
+    route_planner = Node(package="route_planning", executable="route_planner")
 
     return LaunchDescription(
         [
             forest_planner,
+            route_planner,
             heightmap_publisher,
             joint_state_publisher,
             pose_to_transform_broadcaster,
