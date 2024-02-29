@@ -68,11 +68,11 @@ def generate_launch_description():
 
     return LaunchDescription(
         [
-            forest_planner
-            # heightmap_publisher,
-            # joint_state_publisher,
-            # pose_to_transform_broadcaster,
-            # urdf_publisher,
+            forest_planner,
+            heightmap_publisher,
+            joint_state_publisher,
+            pose_to_transform_broadcaster,
+            urdf_publisher,
             # rviz,
         ]
     )
