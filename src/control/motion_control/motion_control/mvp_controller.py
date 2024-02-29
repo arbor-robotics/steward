@@ -37,6 +37,8 @@ class RoutePlanner(Node):
         self.create_timer(1 / CONTROLLER_FREQ, self.updateController)
 
     def routeCb(self, msg: Route):
+        if len(self.route) > 0:
+            return  # route already found
         route = []
         for point in msg.points:
             point: Point
@@ -48,7 +50,7 @@ class RoutePlanner(Node):
 
     def updateController(self):
 
-        WAYPOINT_REACHED_THRESHOLD = 1.0  # m
+        WAYPOINT_REACHED_THRESHOLD = 2.0  # m
 
         if len(self.route) < 1:
             return
@@ -71,6 +73,12 @@ class RoutePlanner(Node):
         # TODO: Use scipy rotations
         ego_yaw = np.arcsin(qz) * 2 + math.pi / 2
 
+        # Lock yaw into [-pi, pi]
+        if ego_yaw > math.pi:
+            ego_yaw -= 2 * math.pi
+        if ego_yaw < -math.pi:
+            ego_yaw += 2 * math.pi
+
         # Get ego distance from next route point
         next_route_pt = self.route[0]
         dx = next_route_pt[0] - ego_x
@@ -79,14 +87,45 @@ class RoutePlanner(Node):
         if dist < WAYPOINT_REACHED_THRESHOLD:
             self.route.pop(0)
 
+        self.get_logger().info(
+            f"Targ: {next_route_pt.astype(int)}. Ego: {int(ego_x)}, {int(ego_y)}"
+        )
+
         target_heading = math.atan2(dy, dx)
+        # Lock target_heading into [-pi, pi]
+        if target_heading > math.pi:
+            target_heading -= 2 * math.pi
+        if target_heading < -math.pi:
+            target_heading += 2 * math.pi
+
         yaw_error = target_heading - ego_yaw
+        if yaw_error < -math.pi:
+            yaw_error += 2 * math.pi
+        if yaw_error > math.pi:
+            yaw_error -= 2 * math.pi
+        # self.get_logger().info(
+        #     f"We're {dist} m away, heading {math.degrees(target_heading)}"
+        # )
         self.get_logger().info(
-            f"We're {dist} m away, heading {math.degrees(target_heading)}"
+            f"Heading is {int(math.degrees(ego_yaw))}, targ {int(math.degrees(target_heading))}, err {int(math.degrees(yaw_error))}, dist {int(dist)}"
         )
-        self.get_logger().info(
-            f"Heading is {math.degrees(ego_yaw)}, err {math.degrees(yaw_error)}"
-        )
+
+        command_msg = Twist()
+
+        angular_twist_val = 8.0
+
+        if yaw_error < math.radians(-10):
+            self.get_logger().info("TURN RIGHT")
+            command_msg.angular.z = -angular_twist_val
+            command_msg.linear.x = 0.5
+        elif yaw_error > math.radians(10):
+            self.get_logger().info("TURN LEFT")
+            command_msg.angular.z = angular_twist_val
+            command_msg.linear.x = 0.5
+        else:
+            command_msg.linear.x = 1.0
+
+        self.twistPub.publish(command_msg)
 
     def pathCb(self, msg: Path):
         self.get_logger().info("Got a path!")

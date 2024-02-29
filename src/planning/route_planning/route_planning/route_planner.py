@@ -195,12 +195,12 @@ class RoutePlanner(Node):
             )
 
         try:
-            map_to_bl_tf = self.tf_buffer.lookup_transform(
-                "base_link", "map", rclpy.time.Time()
+            bl_to_map_tf = self.tf_buffer.lookup_transform(
+                "map", "base_link", rclpy.time.Time()
             )
         except TransformException as ex:
             self.get_logger().info(
-                f"Could not find map->base_link transform. Skipping."
+                f"Could not find base_link->map transform. Skipping."
             )
             return
 
@@ -208,9 +208,9 @@ class RoutePlanner(Node):
         planting_points = self.getPointsFromOccupancyGrid(forest_plan_msg)
 
         # append the robot's position
-        map_to_bl_tf: TransformStamped
-        robot_pos_x = -map_to_bl_tf.transform.translation.x
-        robot_pos_y = -map_to_bl_tf.transform.translation.y
+        bl_to_map_tf: TransformStamped
+        robot_pos_x = bl_to_map_tf.transform.translation.x
+        robot_pos_y = bl_to_map_tf.transform.translation.y
         planting_points = np.vstack(([robot_pos_x, robot_pos_y], planting_points))
 
         self.get_logger().info(f"PLANTING POINTS: {planting_points.shape}")
