@@ -13,6 +13,7 @@ from steward_msgs.msg import Route
 from tf2_ros import TransformException
 from tf2_ros.buffer import Buffer
 from tf2_ros.transform_listener import TransformListener
+from scipy.spatial.transform import Rotation as R
 
 
 class RoutePlanner(Node):
@@ -67,38 +68,49 @@ class RoutePlanner(Node):
 
         ego_x = base_link_to_map_tf.transform.translation.x
         ego_y = base_link_to_map_tf.transform.translation.y
-        qz = base_link_to_map_tf.transform.rotation.z
+        q = base_link_to_map_tf.transform.rotation
 
         # This is a very rough approximation of yaw
         # TODO: Use scipy rotations
-        ego_yaw = np.arcsin(qz) * 2 + math.pi / 2
+        orientation_euler = R.from_quat([q.x, q.y, q.z, q.w]).as_euler("xyz")
+        ego_yaw = orientation_euler[2] + np.pi / 2
 
-        # Lock yaw into [-pi, pi]
-        if ego_yaw > math.pi:
-            ego_yaw -= 2 * math.pi
-        if ego_yaw < -math.pi:
-            ego_yaw += 2 * math.pi
+        # # Lock yaw into [-pi, pi]
+        # if ego_yaw > math.pi:
+        #     ego_yaw -= 2 * math.pi
+        # if ego_yaw < -math.pi:
+        #     ego_yaw += 2 * math.pi
 
         # Get ego distance from next route point
         next_route_pt = self.route[0]
+
+        # Transform this point to the base_link frame
+        # 1. First translate
+        x_ = next_route_pt[0] - ego_x
+        y_ = next_route_pt[1] - ego_y
+        # 2. Then rotate given yaw
+        x = x_ * np.cos(-ego_yaw) - y_ * np.sin(-ego_yaw)
+        y = y_ * np.cos(-ego_yaw) + x_ * np.sin(-ego_yaw)
+        yaw_error = np.arctan2(y, x)
+
         dx = next_route_pt[0] - ego_x
         dy = next_route_pt[1] - ego_y
         dist = np.sqrt(dx**2 + dy**2)
         if dist < WAYPOINT_REACHED_THRESHOLD:
             self.route.pop(0)
 
-        self.get_logger().info(
-            f"Targ: {next_route_pt.astype(int)}. Ego: {int(ego_x)}, {int(ego_y)}"
-        )
+        # self.get_logger().info(
+        #     f"Targ: {next_route_pt.astype(int)}. Ego: {int(ego_x)}, {int(ego_y)}, yawerr {yaw_error}"
+        # )
 
-        target_heading = math.atan2(dy, dx)
-        # Lock target_heading into [-pi, pi]
-        if target_heading > math.pi:
-            target_heading -= 2 * math.pi
-        if target_heading < -math.pi:
-            target_heading += 2 * math.pi
+        # target_heading = math.atan2(dy, dx)
+        # # Lock target_heading into [-pi, pi]
+        # if target_heading > math.pi:
+        #     target_heading -= 2 * math.pi
+        # if target_heading < -math.pi:
+        #     target_heading += 2 * math.pi
 
-        yaw_error = target_heading - ego_yaw
+        # # yaw_error = target_heading - ego_yaw
         if yaw_error < -math.pi:
             yaw_error += 2 * math.pi
         if yaw_error > math.pi:
@@ -106,13 +118,15 @@ class RoutePlanner(Node):
         # self.get_logger().info(
         #     f"We're {dist} m away, heading {math.degrees(target_heading)}"
         # )
-        self.get_logger().info(
-            f"Heading is {int(math.degrees(ego_yaw))}, targ {int(math.degrees(target_heading))}, err {int(math.degrees(yaw_error))}, dist {int(dist)}"
-        )
+        # self.get_logger().info(
+        #     f"Heading is {int(math.degrees(ego_yaw))}, targ {int(x), int(y)}, err {int(math.degrees(yaw_error))}, dist {int(dist)}"
+        # )
 
         command_msg = Twist()
 
         angular_twist_val = 8.0
+
+        # if abs(yaw_error) > math.radians(30)
 
         if yaw_error < math.radians(-10):
             self.get_logger().info("TURN RIGHT")
@@ -124,6 +138,7 @@ class RoutePlanner(Node):
             command_msg.linear.x = 0.5
         else:
             command_msg.linear.x = 1.0
+            self.get_logger().info("DRIVE STRAIGHT")
 
         self.twistPub.publish(command_msg)
 
