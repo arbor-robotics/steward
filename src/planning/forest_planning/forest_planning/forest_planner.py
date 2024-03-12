@@ -48,8 +48,8 @@ class RoutePlanner(Node):
 
         self.forestPlan = self.createForestPlan()
 
-        PLAN_PUBLISH_RATE = 0.5  # Hz. TODO: Parameterize this.
-        plan_pub_timer = self.create_timer(1 / PLAN_PUBLISH_RATE, self.publishPlan)
+        PLAN_PUBLISH_RATE = self.get_parameter("plan_publish_freq").value
+        self.create_timer(1 / PLAN_PUBLISH_RATE, self.publishPlan)
 
     def publishPlan(self) -> None:
         self.get_logger().debug("Publishing Forest Plan")
@@ -72,7 +72,7 @@ class RoutePlanner(Node):
         self, target_seedling_count=10000, do_plotting=False
     ) -> OccupancyGrid:
 
-        RES = 0.2  # m per pixel side TODO parameterize this
+        RES = self.get_parameter("plan_resolution").value
         MINIMUM_SPACING_METERS = self.get_parameter("minimum_spacing").value
         MINIMUM_SPACING_PX = np.floor(MINIMUM_SPACING_METERS / RES)
 
@@ -196,6 +196,20 @@ class RoutePlanner(Node):
         )
         minimum_spacing_param_desc.type = ParameterType.PARAMETER_DOUBLE
         self.declare_parameter("minimum_spacing", 1.0, minimum_spacing_param_desc)
+
+        plan_publish_freq_param_desc = ParameterDescriptor()
+        plan_publish_freq_param_desc.description = (
+            "Frequency at which the Forest Plan result is published, in Hz."
+        )
+        plan_publish_freq_param_desc.type = ParameterType.PARAMETER_DOUBLE
+        self.declare_parameter("plan_publish_freq", 0.5, plan_publish_freq_param_desc)
+
+        plan_resolution_param_desc = ParameterDescriptor()
+        plan_resolution_param_desc.description = (
+            "Side length of cells within the Forest Plan, in meters."
+        )
+        plan_resolution_param_desc.type = ParameterType.PARAMETER_DOUBLE
+        self.declare_parameter("plan_resolution", 0.2, plan_resolution_param_desc)
 
 
 def main(args=None):
