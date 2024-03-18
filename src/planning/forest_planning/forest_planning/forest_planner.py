@@ -84,11 +84,9 @@ class RoutePlanner(Node):
         msg = OccupancyGrid()
 
         # TODO: Send these as OccupancyGrid msgs
-        # Read satellite imagery, heightmap, bounds map from disk
-        imagery = cv2.imread("data/maps/flagstaff/imagery.jpg")
         heightmap = cv2.imread("data/maps/flagstaff/heightmap.jpg")
         bounds = cv2.imread(
-            "data/maps/flagstaff/planting-bounds.jpg", 0
+            "data/maps/flagstaff/bounds.jpg", 0
         )  # "0" means grayscale mode
 
         # Map bounds to our classification scheme, where:
@@ -113,9 +111,6 @@ class RoutePlanner(Node):
 
             axs[1, 0].imshow(heightmap)
             axs[1, 0].set(title=f"Height map")
-
-            axs[1, 1].imshow(imagery)
-            axs[1, 1].set(title=f"Satellite imagery")
 
         # We're basically creating a grayscale picture.
         plan = np.zeros_like(bounds)

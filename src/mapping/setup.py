@@ -19,5 +19,6 @@ setup(
     tests_require=["pytest"],
     entry_points={
         "console_scripts": ["heightmap_publisher = mapping.heightmap_publisher:main"],
+        "console_scripts": ["map_loader = mapping.map_loader:main"],
     },
 )

@@ -16,13 +16,15 @@ import xacro
 
 def generate_launch_description():
 
+    MAP_NAME = "demoland"
+
     # TODO: Is there a more elegant way to do this?
     # Currently we assume that this launch file is at the root of the workspace
     steward_root = path.dirname(path.realpath(__file__))
     environ["STEWARD_ROOT"] = steward_root
     xacro_name = "steward.urdf.xacro"
     mesh_path = path.join(steward_root, "data", "meshes", "steward")
-    map_directory = path.join(steward_root, "data", "maps", "schenley")
+    map_directory = path.join(steward_root, "data", "maps", MAP_NAME)
 
     doc = xacro.process_file(
         path.join(steward_root, "config", xacro_name), mappings={"mesh_path": mesh_path}
@@ -33,19 +35,6 @@ def generate_launch_description():
         package="robot_state_publisher",
         executable="robot_state_publisher",
         parameters=[{"robot_description": robot_desc}],
-    )
-
-    heightmap_publisher = Node(
-        package="mapping",
-        executable="heightmap_publisher",
-        parameters=[
-            {
-                "map_dir": map_directory,
-                "resolution": 1.0,  # m/pixel
-                "origin": [-661.07, -423.11, 0.0],
-                # 'origin': [-661.07, -423.11, -43.73]
-            }
-        ],
     )
 
     rviz = Node(
@@ -75,16 +64,29 @@ def generate_launch_description():
         package="camera_processing", executable="arborsim_cam_processor"
     )
 
+    map_loader = Node(
+        package="mapping",
+        executable="map_loader",
+        parameters=[
+            {
+                "map_dir": map_directory,
+                "resolution": 1.0,  # m/pixel
+                "origin": [-661.07, -423.11, 0.0],
+                # 'origin': [-661.07, -423.11, -43.73]
+            }
+        ],
+    )
+
     return LaunchDescription(
         [
-            camera_processor,
-            forest_planner,
-            heightmap_publisher,
-            joint_state_publisher,
-            mvp_controller,
-            pose_to_transform_broadcaster,
-            route_planner,
-            urdf_publisher,
+            # camera_processor,
+            # forest_planner,
+            # joint_state_publisher,
+            map_loader,
+            # mvp_controller,
+            # pose_to_transform_broadcaster,
+            # route_planner,
             # rviz,
+            # urdf_publisher,
         ]
     )
