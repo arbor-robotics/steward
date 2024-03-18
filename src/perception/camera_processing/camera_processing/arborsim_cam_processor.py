@@ -123,13 +123,13 @@ class ArborsimCamProcessor(Node):
 
     def imageCb(self, msg: Image):
         arr = self.cv_bridge.imgmsg_to_cv2(msg, "rgb8")
-        arr = cv2.flip(arr, 0)  # Flip the image vertically
+
+        # Flip the image vertically
+        arr = cv2.flip(arr, 0)
+
         corrected_img = self.cv_bridge.cv2_to_imgmsg(arr, "rgb8")
         corrected_img.header = self.getHeader()
         self.corrected_image_pub.publish(corrected_img)
-        # self.get_logger().info(str(arr.shape))
-        # plt.imshow(arr)
-        # plt.show()
 
 
 def main(args=None):

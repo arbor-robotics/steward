@@ -71,15 +71,19 @@ def generate_launch_description():
     )
     route_planner = Node(package="route_planning", executable="route_planner")
     mvp_controller = Node(package="motion_control", executable="mvp_controller")
+    camera_processor = Node(
+        package="camera_processing", executable="arborsim_cam_processor"
+    )
 
     return LaunchDescription(
         [
+            camera_processor,
             forest_planner,
-            route_planner,
-            mvp_controller,
             heightmap_publisher,
             joint_state_publisher,
+            mvp_controller,
             pose_to_transform_broadcaster,
+            route_planner,
             urdf_publisher,
             # rviz,
         ]
