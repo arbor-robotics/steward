@@ -1,0 +1,9 @@
+res: 0.2
+width_px: 5000 # 1 sq km
+height_px: 5000
+origin_lat: ??? # 40.441111 # 40°26'28"N
+origin_lon: ??? # 79.947222 # 79°56'50"W real-world coords of pixel (0,0)
+origin_x: ??? # -83.27 # approx meters east of statue. Remember: ENU
+origin_y: ??? # 285.06
+min_height: 3.03 # meters
+max_height: 111.51 # meters
