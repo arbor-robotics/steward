@@ -30,8 +30,10 @@ class RoutePlanner(Node):
 
         self.create_subscription(OccupancyGrid, "/map/height", self.heightMapCb, 10)
         self.create_subscription(
-            OccupancyGrid, "/map/planting_bounds", self.plantingBoundsCb, 10
+            OccupancyGrid, "/map/bounds", self.plantingBoundsCb, 10
         )
+
+        self.bounds_msg = None
 
         # https://docs.ros.org/en/humble/Concepts/Intermediate/About-Quality-of-Service-Settings.html
         map_qos = QoSProfile(
@@ -46,14 +48,20 @@ class RoutePlanner(Node):
             OccupancyGrid, "/planning/forest_plan", map_qos
         )
 
-        self.forestPlan = self.createForestPlan()
+        self.forest_plan = None
 
         PLAN_PUBLISH_RATE = self.get_parameter("plan_publish_freq").value
         self.create_timer(1 / PLAN_PUBLISH_RATE, self.publishPlan)
 
     def publishPlan(self) -> None:
+        if self.forest_plan is None:
+            self.forest_plan = self.createForestPlan()
+            if self.forest_plan is None:
+                # If it's still none, then the inputs (like bounds)
+                # are not yet available.
+                return
         self.get_logger().debug("Publishing Forest Plan")
-        self.forest_plan_pub.publish(self.forestPlan)
+        self.forest_plan_pub.publish(self.forest_plan)
 
     def getHeader(self) -> Header:
         msg = Header()
@@ -62,15 +70,18 @@ class RoutePlanner(Node):
         return msg
 
     def heightMapCb(self, msg: OccupancyGrid):
-        # self.get_logger().debug("Got height map!")
-        pass
+        self.heightmap = msg
 
     def plantingBoundsCb(self, msg: OccupancyGrid):
-        self.get_logger().info("Got planting bounds map!")
+        self.bounds_msg = msg
 
     def createForestPlan(
         self, target_seedling_count=10000, do_plotting=False
     ) -> OccupancyGrid:
+
+        if self.bounds_msg is None:
+            self.get_logger().warning("Bounds message not yet received. Skipping.")
+            return
 
         RES = self.get_parameter("plan_resolution").value
         MINIMUM_SPACING_METERS = self.get_parameter("minimum_spacing").value
@@ -79,15 +90,12 @@ class RoutePlanner(Node):
         self.get_logger().info(
             f"Generating Forest Plan with {MINIMUM_SPACING_METERS} meter spacing"
         )
-        startTime = time()
 
         msg = OccupancyGrid()
 
-        # TODO: Send these as OccupancyGrid msgs
-        heightmap = cv2.imread("data/maps/flagstaff/heightmap.jpg")
-        bounds = cv2.imread(
-            "data/maps/flagstaff/bounds.jpg", 0
-        )  # "0" means grayscale mode
+        bounds = np.asarray(self.bounds_msg.data, dtype=np.int8).reshape(
+            self.bounds_msg.info.height, self.bounds_msg.info.width
+        )
 
         # Map bounds to our classification scheme, where:
         # 0 = don't enter, 1 = plant here, 2 = enter but don't plant
@@ -169,8 +177,8 @@ class RoutePlanner(Node):
         msg.info.height = plan.shape[0]
         msg.info.width = plan.shape[1]
         msg.info.resolution = RES
-        msg.info.origin.position.x = -20.0  # ENU. Rough estimate!
-        msg.info.origin.position.y = -129.7
+
+        msg.info.origin = self.bounds_msg.info.origin
         msg.info.map_load_time = msg.header.stamp
 
         self.get_logger().info(

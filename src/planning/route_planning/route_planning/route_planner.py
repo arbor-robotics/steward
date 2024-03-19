@@ -26,6 +26,7 @@ class RoutePlanner(Node):
         self.setUpParameters()
 
         self.last_time_plan_received = -1.0
+        self.cached_plan_msg = None
         self.cached_route_msg = None
 
         persistent_qos = QoSProfile(
@@ -60,6 +61,7 @@ class RoutePlanner(Node):
     def publishCachedRoute(self) -> None:
         if self.cached_route_msg is None:
             self.get_logger().warning("Route not yet calculated. Waiting to publish.")
+            self.generateRoute()
             return
 
         self.full_route_pub.publish(self.cached_route_msg)
@@ -181,7 +183,16 @@ class RoutePlanner(Node):
             route = np.asarray(route[0])[:, 0]
         return route
 
-    def forestPlanCb(self, forest_plan_msg: OccupancyGrid, do_plotting=False) -> None:
+    def forestPlanCb(self, forest_plan_msg: OccupancyGrid) -> None:
+
+        self.cached_plan_msg = forest_plan_msg
+
+    def generateRoute(self):
+
+        if self.cached_plan_msg is None:
+            return
+
+        forest_plan_msg = self.cached_plan_msg
 
         if self.last_time_plan_received >= self.rosTimeToSeconds(
             forest_plan_msg.info.map_load_time
@@ -254,23 +265,23 @@ class RoutePlanner(Node):
         self.cached_route_msg = route_msg
         # self.full_route_pub.publish(route_msg)
 
-        if do_plotting:
+        # if do_plotting:
 
-            plt.style.use("seaborn")
+        #     plt.style.use("seaborn")
 
-            # Re-order planting points w.r.t. route
-            planting_points = planting_points[route]
+        #     # Re-order planting points w.r.t. route
+        #     planting_points = planting_points[route]
 
-            plt.plot(planting_points[:, 0], planting_points[:, 1])
-            plt.scatter(planting_points[:, 0], planting_points[:, 1])
-            plt.scatter(planting_points[0, 0], planting_points[0, 1], c="g", s=250)
+        #     plt.plot(planting_points[:, 0], planting_points[:, 1])
+        #     plt.scatter(planting_points[:, 0], planting_points[:, 1])
+        #     plt.scatter(planting_points[0, 0], planting_points[0, 1], c="g", s=250)
 
-            plt.xlabel("x (meters)")
-            plt.ylabel("y (meters)")
-            plt.title(
-                f"Iterative stochastic local search result for {len(route)} seedlings"
-            )
-            plt.show()
+        #     plt.xlabel("x (meters)")
+        #     plt.ylabel("y (meters)")
+        #     plt.title(
+        #         f"Iterative stochastic local search result for {len(route)} seedlings"
+        #     )
+        #     plt.show()
 
     def setUpParameters(self):
         use_fasttsp_param_desc = ParameterDescriptor()

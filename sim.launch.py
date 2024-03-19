@@ -56,7 +56,7 @@ def generate_launch_description():
     forest_planner = Node(
         package="forest_planning",
         executable="forest_planner",
-        parameters=[{"minimum_spacing": 4.0}],
+        parameters=[{"minimum_spacing": 4.0, "plan_resolution": 0.2}],
     )
     route_planner = Node(package="route_planning", executable="route_planner")
     mvp_controller = Node(package="motion_control", executable="mvp_controller")
@@ -70,8 +70,8 @@ def generate_launch_description():
         parameters=[
             {
                 "map_dir": map_directory,
-                "resolution": 1.0,  # m/pixel
-                "origin": [-661.07, -423.11, 0.0],
+                "resolution": 0.2,  # m/pixel
+                "origin": [0, 0, 0.0],
                 # 'origin': [-661.07, -423.11, -43.73]
             }
         ],
@@ -79,14 +79,14 @@ def generate_launch_description():
 
     return LaunchDescription(
         [
-            # camera_processor,
-            # forest_planner,
-            # joint_state_publisher,
+            camera_processor,
+            forest_planner,
+            joint_state_publisher,
             map_loader,
-            # mvp_controller,
-            # pose_to_transform_broadcaster,
-            # route_planner,
+            mvp_controller,
+            pose_to_transform_broadcaster,
+            route_planner,
             # rviz,
-            # urdf_publisher,
+            urdf_publisher,
         ]
     )
