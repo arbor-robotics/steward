@@ -65,6 +65,8 @@ class RoutePlanner(Node):
             return
 
         self.full_route_pub.publish(self.cached_route_msg)
+        self.publishForestPlanMarker(self.cached_route_msg.points)
+        self.publishRouteMarker(self.cached_route_msg.points)
 
     def getHeader(self) -> Header:
         msg = Header()
@@ -190,20 +192,12 @@ class RoutePlanner(Node):
     def generateRoute(self):
 
         if self.cached_plan_msg is None:
+            self.get_logger().info(
+                "Forest Plan not yet received. Skipping route generation."
+            )
             return
 
         forest_plan_msg = self.cached_plan_msg
-
-        if self.last_time_plan_received >= self.rosTimeToSeconds(
-            forest_plan_msg.info.map_load_time
-        ):
-            self.get_logger().debug("Skipping stale Forest Plan")
-            return
-        else:
-            self.get_logger().info("Received a new Forest Plan")
-            self.last_time_plan_received = self.rosTimeToSeconds(
-                forest_plan_msg.info.map_load_time
-            )
 
         try:
             bl_to_map_tf = self.tf_buffer.lookup_transform(
@@ -214,6 +208,17 @@ class RoutePlanner(Node):
                 f"Could not find base_link->map transform. Skipping."
             )
             return
+
+        if self.last_time_plan_received >= self.rosTimeToSeconds(
+            forest_plan_msg.info.map_load_time
+        ):
+            self.get_logger().info("Skipping stale Forest Plan")
+            return
+        else:
+            self.get_logger().info("Received a new Forest Plan")
+            self.last_time_plan_received = self.rosTimeToSeconds(
+                forest_plan_msg.info.map_load_time
+            )
 
         # Convert list of ROS Point messages to np array
         planting_points = self.getPointsFromOccupancyGrid(forest_plan_msg)
@@ -255,9 +260,6 @@ class RoutePlanner(Node):
             point_msg.x, point_msg.y = planting_points[route_idx].tolist()
             route_msg.points.append(point_msg)
             route_msg.ids.append(i)  # TODO: Do we need IDs for each seedling?
-
-        self.publishForestPlanMarker(route_msg.points)
-        self.publishRouteMarker(route_msg.points)
 
         # Publish the Route message
         assert len(route) == len(route_msg.ids), "Route ID length mismatch"
