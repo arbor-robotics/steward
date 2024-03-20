@@ -122,7 +122,7 @@ class RoutePlanner(Node):
         marker_msg.scale.y = 1.0
         marker_msg.scale.z = 3.0
         marker_msg.color.g = 1.0
-        marker_msg.color.a = 1.0
+        marker_msg.color.a = 0.3
         marker_msg.ns = "forest_plan"
         marker_msg.action = Marker.ADD
         marker_msg.id = 1
@@ -147,7 +147,7 @@ class RoutePlanner(Node):
         # https://wiki.ros.org/rviz/DisplayTypes/Marker#Points_.28POINTS.3D8.29
         marker_msg.scale.x = 0.5
         marker_msg.color.b = 1.0
-        marker_msg.color.a = 1.0
+        marker_msg.color.a = 0.3
         marker_msg.ns = "route"
         marker_msg.action = Marker.ADD
         marker_msg.id = 1
