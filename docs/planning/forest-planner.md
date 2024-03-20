@@ -26,9 +26,9 @@ Cells in the planting bound grid may take the following values:
 
 | Value (int) | Description                      |
 | ----------- | -------------------------------- |
-| 0           | Keep out                         |
-| 1           | Plant here                       |
-| 2           | May enter, but do not plant here |
+| 100         | Keep out                         |
+| 0           | Plant here                       |
+| 50          | May enter, but do not plant here |
 
 ![Left to right, down: Planting bounds map, forest plan, height map, satellite imagery](/assets/images/forest-planner-subplots.png)
 <small>Forest plan data for Flagstaff Hill (Schenley Park). In the planting bounds, yellow="enter but don't plant" and teal="plant here." The Forest Plan is the node's output; everything else is an input.</small>
@@ -81,15 +81,13 @@ Long-term, we'd like to support hundreds, perhaps thousands, of tree species. Fo
 
 | Scientific name           | Common name         | Forest layer |
 | ------------------------- | ------------------- | ------------ |
-| *Amelanchier arborea*     | common serviceberry | Understory   |
-| *Nyssa sylvatica*         | black tupelo        | Understory   |
-| *Acer rubrum*             | red maple           | Canopy       |
-| *Carya ovata*             | shagbark hickory    | Canopy       |
-| *Quercus montana*         | chestnut oak        | Canopy       |
-| *Quercus rubra*           | northern red oak    | Canopy       |
-| *Liriodendron tulipifera* | Tulip tree          | Emergent     |
-
-
+| _Amelanchier arborea_     | common serviceberry | Understory   |
+| _Nyssa sylvatica_         | black tupelo        | Understory   |
+| _Acer rubrum_             | red maple           | Canopy       |
+| _Carya ovata_             | shagbark hickory    | Canopy       |
+| _Quercus montana_         | chestnut oak        | Canopy       |
+| _Quercus rubra_           | northern red oak    | Canopy       |
+| _Liriodendron tulipifera_ | Tulip tree          | Emergent     |
 
 [1]: https://thundersaidenergy.com/downloads/reforestation-what-planting-density-for-seedlings/
 [2]: https://www.oregonmetro.gov/news/power-trees

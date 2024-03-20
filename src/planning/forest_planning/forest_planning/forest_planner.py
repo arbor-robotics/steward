@@ -17,9 +17,9 @@ import cv2
 
 
 class BoundCell:
-    DO_NOT_PLANT = 0
-    PLANT_HERE = 1
-    PASS_ONLY = 2
+    DO_NOT_PLANT = 100
+    PLANT_HERE = 0
+    PASS_ONLY = 50
 
 
 class RoutePlanner(Node):
@@ -93,15 +93,12 @@ class RoutePlanner(Node):
 
         msg = OccupancyGrid()
 
-        bounds = np.asarray(self.bounds_msg.data, dtype=np.int8).reshape(
-            self.bounds_msg.info.height, self.bounds_msg.info.width
+        bounds = (
+            np.asarray(self.bounds_msg.data, dtype=np.int8)
+            .reshape(self.bounds_msg.info.height, self.bounds_msg.info.width)
+            .astype(np.uint8)
         )
-
-        # Map bounds to our classification scheme, where:
-        # 0 = don't enter, 1 = plant here, 2 = enter but don't plant
-        bounds[bounds > 250] = BoundCell.PLANT_HERE
-        bounds[bounds > 100] = BoundCell.PASS_ONLY
-        bounds = bounds.astype(np.uint8)  # This may be redundant
+        bounds = np.flip(bounds, axis=0)
 
         if bounds.shape[0] != bounds.shape[1]:
             self.get_logger().warning("Planting bounds map is not square.")

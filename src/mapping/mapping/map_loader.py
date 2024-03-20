@@ -81,7 +81,7 @@ class MapLoader(Node):
 
         # For some reason, the data shows up flipped along the vertical
         # axis in Rviz. Don't ask why! WSH.
-        heightmap = cv2.flip(heightmap, 1)
+        heightmap = cv2.flip(heightmap, 0)
 
         # Convert to grayscale from RGB, RGBA etc if necessary
         if heightmap.ndim > 2:
@@ -116,7 +116,7 @@ class MapLoader(Node):
             bounds = np.load(path.join(dir, "bounds.npy"))
             # For some reason, the data shows up flipped along the vertical
             # axis in Rviz. Don't ask why! WSH.
-            bounds = np.flip(bounds, axis=1)
+            bounds = np.flip(bounds, axis=0)
             return bounds
         except Exception as e:
             # If the bounds couldn't be loaded, return a blank 4 acre x 4 acre image
