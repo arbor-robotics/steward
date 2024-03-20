@@ -9,6 +9,7 @@ from geometry_msgs.msg import Twist, TransformStamped, Point
 from nav_msgs.msg import Path
 from std_msgs.msg import Header
 from steward_msgs.msg import Route
+from visualization_msgs.msg import Marker
 
 from tf2_ros import TransformException
 from tf2_ros.buffer import Buffer
@@ -24,9 +25,24 @@ class RoutePlanner(Node):
 
         self.route = []
 
+        persistent_qos = QoSProfile(
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+            reliability=ReliabilityPolicy.RELIABLE,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1,
+        )
+
         # Note that the trajectory is not used in this minimal controller
         self.create_subscription(Path, "/planning/trajectory", self.trajectoryCb, 10)
         self.create_subscription(Route, "/planning/full_route", self.routeCb, 10)
+
+        self.plan_marker_pub = self.create_publisher(
+            Marker, "/vis/remaining_forest_plan", persistent_qos
+        )
+
+        self.route_marker_pub = self.create_publisher(
+            Marker, "/vis/remaining_route", persistent_qos
+        )
 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
@@ -50,9 +66,58 @@ class RoutePlanner(Node):
         # This is intentionally a Python list of Numpy arrays
         self.route = route
 
+    def publishRemainingForestPlanMarker(self, points: list[Point]):
+        self.get_logger().info(f"Publishing plan marker with {len(points)} points")
+        marker_msg = Marker()
+        marker_msg.header = self.getHeader()
+        marker_msg.frame_locked = True
+        marker_msg.type = Marker.CUBE_LIST
+        marker_msg.points = points
+        # https://wiki.ros.org/rviz/DisplayTypes/Marker#Points_.28POINTS.3D8.29
+        marker_msg.scale.x = 1.0
+        marker_msg.scale.y = 1.0
+        marker_msg.scale.z = 3.0
+        marker_msg.color.g = 1.0
+        marker_msg.color.a = 1.0
+        marker_msg.ns = "forest_plan"
+        marker_msg.action = Marker.ADD
+        marker_msg.id = 1
+        self.plan_marker_pub.publish(marker_msg)
+
+    def getPointsList(self, route: list[np.ndarray]):
+        points = []
+        for p in route:
+            points.append(Point(x=p[0], y=p[1]))
+        return points
+
+    def publishRemainingRouteMarker(self, points: list[Point]):
+
+        # Repeat points not on ends to satisfy LINE_LIST spec
+        modified_points = []
+        modified_points.append(points[0])
+        for pt in points[1:-1]:
+            modified_points.append(pt)
+            modified_points.append(pt)  # Yes-- twice!
+        modified_points.append(points[-1])
+
+        self.get_logger().info(f"Publishing plan marker with {len(points)} points")
+        marker_msg = Marker()
+        marker_msg.header = self.getHeader()
+        marker_msg.frame_locked = True
+        marker_msg.type = Marker.LINE_LIST
+        marker_msg.points = modified_points
+        # https://wiki.ros.org/rviz/DisplayTypes/Marker#Points_.28POINTS.3D8.29
+        marker_msg.scale.x = 0.5
+        marker_msg.color.b = 1.0
+        marker_msg.color.a = 1.0
+        marker_msg.ns = "route"
+        marker_msg.action = Marker.ADD
+        marker_msg.id = 1
+        self.route_marker_pub.publish(marker_msg)
+
     def updateController(self):
 
-        WAYPOINT_REACHED_THRESHOLD = 2.0  # m
+        WAYPOINT_REACHED_THRESHOLD = 0.3  # m
 
         if len(self.route) < 1:
             return
@@ -93,7 +158,11 @@ class RoutePlanner(Node):
         dy = next_route_pt[1] - ego_y
         dist = np.sqrt(dx**2 + dy**2)
         if dist < WAYPOINT_REACHED_THRESHOLD:
-            self.route.pop(0)
+            reached_point = self.route.pop(0)
+
+            points = self.getPointsList([reached_point] + self.route)
+            self.publishRemainingForestPlanMarker(points)
+            self.publishRemainingRouteMarker(points)
 
         if yaw_error < -math.pi:
             yaw_error += 2 * math.pi
@@ -104,17 +173,29 @@ class RoutePlanner(Node):
 
         angular_twist_val = 8.0
 
-        if yaw_error < math.radians(-10):
-            self.get_logger().debug("TURN RIGHT")
-            command_msg.linear.x = 0.5
-        elif yaw_error > math.radians(10):
-            self.get_logger().debug("TURN LEFT")
-            command_msg.angular.z = -angular_twist_val
-            command_msg.linear.x = 0.5
+        # 3 meters is close!
+        if dist < 3:
+            if yaw_error < math.radians(-3):
+                self.get_logger().debug("TURN RIGHT")
+                command_msg.linear.x = 0.0
+            elif yaw_error > math.radians(3):
+                self.get_logger().debug("TURN LEFT")
+                command_msg.linear.x = 0.0
+            else:
+                command_msg.angular.z = 0.0
+                command_msg.linear.x = 0.5
+                self.get_logger().debug("DRIVE STRAIGHT")
         else:
-            command_msg.angular.z = 0.0
-            command_msg.linear.x = 1.0
-            self.get_logger().debug("DRIVE STRAIGHT")
+            if yaw_error < math.radians(-10):
+                self.get_logger().debug("TURN RIGHT")
+                command_msg.linear.x = 0.0
+            elif yaw_error > math.radians(10):
+                self.get_logger().debug("TURN LEFT")
+                command_msg.linear.x = 0.0
+            else:
+                command_msg.angular.z = 0.0
+                command_msg.linear.x = 1.0
+                self.get_logger().debug("DRIVE STRAIGHT")
 
         command_msg.angular.z = yaw_error
         self.twistPub.publish(command_msg)
