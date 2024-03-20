@@ -24,7 +24,8 @@ def generate_launch_description():
     environ["STEWARD_ROOT"] = steward_root
     xacro_name = "steward.urdf.xacro"
     mesh_path = path.join(steward_root, "data", "meshes", "steward")
-    map_directory = path.join(steward_root, "data", "maps", MAP_NAME)
+    map_dir = path.join(steward_root, "data", "maps", MAP_NAME)
+    param_dir = path.join(steward_root, "config")
 
     doc = xacro.process_file(
         path.join(steward_root, "config", xacro_name), mappings={"mesh_path": mesh_path}
@@ -69,12 +70,26 @@ def generate_launch_description():
         executable="map_loader",
         parameters=[
             {
-                "map_dir": map_directory,
+                "map_dir": map_dir,
                 "resolution": 0.2,  # m/pixel
                 "origin": [0, 0, 0.0],
                 # 'origin': [-661.07, -423.11, -43.73]
             }
         ],
+    )
+
+    nav2_bringup = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            [
+                path.join(get_package_share_directory("nav2_bringup"), "launch"),
+                "/bringup_launch.py",
+            ]
+        ),
+        launch_arguments={
+            "map": path.join(map_dir, "map.yaml"),
+            # "use_sim_time": use_sim_time,
+            "params_file": path.join(param_dir, "nav2.param.yaml"),
+        }.items(),
     )
 
     return LaunchDescription(
@@ -83,10 +98,11 @@ def generate_launch_description():
             forest_planner,
             joint_state_publisher,
             map_loader,
-            mvp_controller,
+            # mvp_controller,
+            nav2_bringup,
             pose_to_transform_broadcaster,
             route_planner,
-            # rviz,
+            rviz,
             urdf_publisher,
         ]
     )

@@ -39,6 +39,15 @@ class PoseToTransformBroadcaster(Node):
 
         self.tf_broadcaster.sendTransform(t)
 
+        t.header = msg.header
+        t.child_frame_id = "odom"  # TODO: Change to 'gnss'
+        t.transform.translation.x = msg.pose.pose.position.x
+        t.transform.translation.y = msg.pose.pose.position.y
+        t.transform.translation.z = msg.pose.pose.position.z
+        t.transform.rotation = msg.pose.pose.orientation
+
+        self.tf_broadcaster.sendTransform(t)
+
 
 def main(args=None):
     rclpy.init(args=args)
