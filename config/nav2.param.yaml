@@ -112,7 +112,7 @@ controller_server:
     controller_plugins: ["FollowPath"]
     progress_checker:
       plugin: "nav2_controller::SimpleProgressChecker"
-      required_movement_radius: 0.5
+      required_movement_radius: 0.0
       movement_time_allowance: 10.0
     goal_checker:
       plugin: "nav2_controller::SimpleGoalChecker"
@@ -121,28 +121,20 @@ controller_server:
       stateful: True
     # DWB controller parameters
     FollowPath:
-      # TODO: https://navigation.ros.org/tuning/index.html#rotate-in-place-behavior &
-      # https://navigation.ros.org/configuration/packages/configuring-rotation-shim-controller.html#configuring-rotation-shim
-      plugin: "nav2_rotation_shim_controller::RotationShimController"
-      primary_controller: "dwb_core::DWBLocalPlanner"
-      angular_dist_threshold: 0.785
-      forward_sampling_distance: 0.5
-      rotate_to_heading_angular_vel: 1.8
-      max_angular_accel: 3.2
-      simulate_ahead_time: 1.0
+      plugin: "dwb_core::DWBLocalPlanner"
       debug_trajectory_details: True
       min_vel_x: 0.0
       min_vel_y: 0.0
-      max_vel_x: 5.0
+      max_vel_x: 1.0
       max_vel_y: 0.0
       max_vel_theta: 1.0
       min_speed_xy: 0.0
-      max_speed_xy: 5.0
+      max_speed_xy: 1.0
       min_speed_theta: 0.0
-      acc_lim_x: 0.5
+      acc_lim_x: 2.5
       acc_lim_y: 0.0
       acc_lim_theta: 3.2
-      decel_lim_x: -0.5
+      decel_lim_x: -2.5
       decel_lim_y: 0.0
       decel_lim_theta: -3.2
       vx_samples: 20
@@ -152,7 +144,7 @@ controller_server:
       linear_granularity: 0.05
       angular_granularity: 0.025
       transform_tolerance: 0.2
-      xy_goal_tolerance: 0.25 # Goal reached when we're this many meters away
+      xy_goal_tolerance: 0.25
       trans_stopped_velocity: 0.25
       short_circuit_trajectory_evaluation: True
       stateful: True

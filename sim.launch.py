@@ -92,17 +92,24 @@ def generate_launch_description():
         }.items(),
     )
 
+    odom_bl = Node(
+        package="tf2_ros",
+        executable="static_transform_publisher",
+        arguments=["--frame-id", "odom", "--child-frame-id", "base_link"],
+    )
+
     return LaunchDescription(
         [
             camera_processor,
-            forest_planner,
+            # forest_planner,
             joint_state_publisher,
-            map_loader,
+            # map_loader,
+            odom_bl,
             # mvp_controller,
             nav2_bringup,
             pose_to_transform_broadcaster,
-            route_planner,
-            rviz,
+            # route_planner,
+            # rviz,
             urdf_publisher,
         ]
     )

@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+    <name>steward_description</name>
+    <version>0.1.8</version>
+    <description>URDF robot description for Steward</description>
+
+    <maintainer email="w@heit.mn">Will Heitman</maintainer>
+
+    <license>BSD</license>
+
+    <author email="rgariepy@clearpathrobotics.com">Ryan Gariepy</author>
+
+    <buildtool_depend>catkin</buildtool_depend>
+    <build_depend>roslaunch</build_depend>
+    <exec_depend>cpr_onav_description</exec_depend>
+    <exec_depend>robot_state_publisher</exec_depend>
+    <exec_depend>urdf</exec_depend>
+    <exec_depend>xacro</exec_depend>
+
+    <export>
+        <build_type>ament_python</build_type>
+    </export>
+</package>
