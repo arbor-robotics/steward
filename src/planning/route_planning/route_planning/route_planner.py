@@ -1,22 +1,26 @@
 import numpy as np
 import rclpy
-from builtin_interfaces.msg import Time as RosTime
 from route_planning.ant_colony import AntColony
+from rclpy.action import ActionClient
 from rclpy.node import Node, ParameterDescriptor, ParameterType
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
-from visualization_msgs.msg import Marker, MarkerArray
-from steward_msgs.msg import Route, ForestPlan
-from geometry_msgs.msg import Point, TransformStamped
 from time import time
 from tqdm import tqdm, trange
 from scipy.spatial.distance import pdist, squareform
 import fast_tsp
 from matplotlib import pyplot as plt
-from std_msgs.msg import Header
-from nav_msgs.msg import OccupancyGrid
 from tf2_ros import TransformException
 from tf2_ros.buffer import Buffer
 from tf2_ros.transform_listener import TransformListener
+
+# ROS interfaces
+from builtin_interfaces.msg import Time as RosTime
+from geometry_msgs.msg import Point, PoseStamped, TransformStamped
+from nav_msgs.msg import OccupancyGrid
+from nav2_msgs.action import FollowWaypoints
+from std_msgs.msg import Header
+from steward_msgs.msg import Route, ForestPlan
+from visualization_msgs.msg import Marker, MarkerArray
 
 
 class RoutePlanner(Node):
@@ -58,6 +62,12 @@ class RoutePlanner(Node):
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
 
+        self.waypoint_action_client = ActionClient(
+            self, FollowWaypoints, "/follow_waypoints"
+        )
+
+        self.waypoints_sent: bool = False
+
     def publishCachedRoute(self) -> None:
         if self.cached_route_msg is None:
             self.get_logger().warning("Route not yet calculated. Waiting to publish.")
@@ -67,6 +77,24 @@ class RoutePlanner(Node):
         self.full_route_pub.publish(self.cached_route_msg)
         self.publishForestPlanMarker(self.cached_route_msg.points)
         self.publishRouteMarker(self.cached_route_msg.points)
+
+        goal = FollowWaypoints.Goal()
+
+        if not self.waypoints_sent:
+            self.get_logger().info("LET'S DO THIS")
+            for point in self.cached_route_msg.points:
+                point: Point
+                pose = PoseStamped()
+                pose.pose.position = point
+                self.get_logger().info(f"{point}")
+                goal.poses.append(pose)
+
+            self.waypoint_action_client.send_goal_async(goal, self.waypoint_feedback_cb)
+            self.waypoints_sent = True
+
+    def waypoint_feedback_cb(self, feedback: FollowWaypoints.Feedback):
+        # self.get_logger().info(f"Waypoint feedback: {feedback}")
+        return
 
     def getHeader(self) -> Header:
         msg = Header()
@@ -111,7 +139,7 @@ class RoutePlanner(Node):
         return map_points
 
     def publishForestPlanMarker(self, points: list[Point]):
-        self.get_logger().info(f"Publishing plan marker with {len(points)} points")
+        # self.get_logger().info(f"Publishing plan marker with {len(points)} points")
         marker_msg = Marker()
         marker_msg.header = self.getHeader()
         marker_msg.frame_locked = True
@@ -138,7 +166,7 @@ class RoutePlanner(Node):
             modified_points.append(pt)  # Yes-- twice!
         modified_points.append(points[-1])
 
-        self.get_logger().info(f"Publishing plan marker with {len(points)} points")
+        # self.get_logger().info(f"Publishing plan marker with {len(points)} points")
         marker_msg = Marker()
         marker_msg.header = self.getHeader()
         marker_msg.frame_locked = True
