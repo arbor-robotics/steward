@@ -100,7 +100,7 @@ def generate_launch_description():
 
     return LaunchDescription(
         [
-            # camera_processor,
+            camera_processor,
             # forest_planner,
             joint_state_publisher,
             # map_loader,
