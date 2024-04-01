@@ -1,6 +1,5 @@
 import numpy as np
 import rclpy
-from route_planning.ant_colony import AntColony
 from rclpy.action import ActionClient
 from rclpy.node import Node, ParameterDescriptor, ParameterType
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
@@ -78,19 +77,19 @@ class RoutePlanner(Node):
         self.publishForestPlanMarker(self.cached_route_msg.points)
         self.publishRouteMarker(self.cached_route_msg.points)
 
-        # goal = FollowWaypoints.Goal()
+        goal = FollowWaypoints.Goal()
 
-        # if not self.waypoints_sent:
-        #     self.get_logger().info("LET'S DO THIS")
-        #     for point in self.cached_route_msg.points:
-        #         point: Point
-        #         pose = PoseStamped()
-        #         pose.pose.position = point
-        #         self.get_logger().info(f"{point}")
-        #         goal.poses.append(pose)
+        if not self.waypoints_sent:
+            self.get_logger().info("LET'S DO THIS")
+            for point in self.cached_route_msg.points:
+                point: Point
+                pose = PoseStamped()
+                pose.pose.position = point
+                self.get_logger().info(f"{point}")
+                goal.poses.append(pose)
 
-        #     self.waypoint_action_client.send_goal_async(goal, self.waypoint_feedback_cb)
-        #     self.waypoints_sent = True
+            self.waypoint_action_client.send_goal_async(goal, self.waypoint_feedback_cb)
+            self.waypoints_sent = True
 
     def waypoint_feedback_cb(self, feedback: FollowWaypoints.Feedback):
         # self.get_logger().info(f"Waypoint feedback: {feedback}")
