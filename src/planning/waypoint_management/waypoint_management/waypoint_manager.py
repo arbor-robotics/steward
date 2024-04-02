@@ -1,12 +1,12 @@
 import numpy as np
 import rclpy
-from route_planning.ant_colony import AntColony
 from rclpy.action import ActionClient
 from rclpy.node import Node, ParameterDescriptor, ParameterType
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from time import time
 from tqdm import tqdm, trange
 from scipy.spatial.distance import pdist, squareform
+from scipy.spatial.transform import Rotation as R
 import fast_tsp
 from matplotlib import pyplot as plt
 from tf2_ros import TransformException
@@ -15,7 +15,7 @@ from tf2_ros.transform_listener import TransformListener
 
 # ROS interfaces
 from builtin_interfaces.msg import Time as RosTime
-from geometry_msgs.msg import Point, PoseStamped, TransformStamped
+from geometry_msgs.msg import Point, PoseStamped, TransformStamped, Transform
 from nav_msgs.msg import OccupancyGrid
 from nav2_msgs.action import FollowWaypoints, NavigateToPose
 from std_msgs.msg import Header
@@ -23,83 +23,82 @@ from steward_msgs.msg import Route, ForestPlan
 from visualization_msgs.msg import Marker, MarkerArray
 
 
-class RoutePlanner(Node):
+class WaypointManager(Node):
     def __init__(self):
-        super().__init__("route_planner")
+        super().__init__("waypoint_manager")
 
         self.setUpParameters()
 
-        self.last_time_plan_received = -1.0
-        self.cached_plan_msg = None
-        self.cached_route_msg = None
+        self.cached_route = None
+        self.create_subscription(Route, "/planning/full_route", self.routeCb, 10)
 
-        persistent_qos = QoSProfile(
-            durability=DurabilityPolicy.TRANSIENT_LOCAL,
-            reliability=ReliabilityPolicy.RELIABLE,
-            history=HistoryPolicy.KEEP_LAST,
-            depth=1,
-        )
-
-        forest_plan_sub = self.create_subscription(
-            OccupancyGrid, "/planning/forest_plan", self.forestPlanCb, persistent_qos
-        )
-
-        self.full_route_pub = self.create_publisher(Route, "/planning/full_route", 10)
-
-        self.plan_marker_pub = self.create_publisher(
-            Marker, "/vis/forest_plan", persistent_qos
-        )
-
-        self.route_marker_pub = self.create_publisher(
-            Marker, "/vis/route", persistent_qos
-        )
-
-        ROUTE_PUB_FREQ = 0.5  # Hz. TODO: Parameterize this.
-        self.route_pub_timer = self.create_timer(
-            1 / ROUTE_PUB_FREQ, self.publishCachedRoute
-        )
+        WAYPOINT_CHECK_FREQ = self.get_parameter("waypoint_check_freq").value
+        self.create_timer(1 / WAYPOINT_CHECK_FREQ, self.updateGoalPose)
 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
 
-        self.waypoint_action_client = ActionClient(
-            self, FollowWaypoints, "/follow_waypoints"
+        self.goal_pose_pub = self.create_publisher(PoseStamped, "/goal_pose", 10)
+
+        self.remaining_waypoints = []
+
+    # TODO: This REALLY needs to be made a service, not a subscription. WSH.
+    def routeCb(self, msg: Route):
+        if self.cached_route is None:
+            self.cached_route = msg
+            self.remaining_waypoints = msg.points
+
+    def distance(self, tf: Transform, waypoint: Point) -> float:
+        trans = tf.translation
+        return np.linalg.norm(
+            [trans.x - waypoint.x, trans.y - waypoint.y, trans.z - waypoint.z]
         )
 
-        self.nav_to_pose_client = ActionClient(
-            self, NavigateToPose, "/navigate_to_pose"
-        )
+    def updateGoalPose(self) -> None:
+        dist_threshold = self.get_parameter("waypoint_distance_threshold").value
 
-        self.waypoints_sent: bool = False
-
-    def publishCachedRoute(self) -> None:
-        if self.cached_route_msg is None:
-            self.get_logger().warning("Route not yet calculated. Waiting to publish.")
-            self.generateRoute()
+        if self.cached_route is None:
+            self.get_logger().debug("Cached route not yet received. Skipping.")
+            return
+        try:
+            bl_to_map_tf = self.tf_buffer.lookup_transform(
+                "map", "base_link", rclpy.time.Time()
+            )
+        except TransformException as ex:
+            self.get_logger().info(f"Could not transform map to base_link: {ex}")
             return
 
-        self.full_route_pub.publish(self.cached_route_msg)
-        self.publishForestPlanMarker(self.cached_route_msg.points)
-        self.publishRouteMarker(self.cached_route_msg.points)
+        # self.get_logger().info(f"Got tf: {bl_to_map_tf.transform.translation}")
 
-        # goal = FollowWaypoints.Goal()
+        dist = self.distance(bl_to_map_tf.transform, self.remaining_waypoints[0])
+        # self.get_logger().info(f"Dist is: {dist}")
 
-        # if not self.waypoints_sent:
-        #     self.get_logger().info("LET'S DO THIS")
-        #     for point in self.cached_route_msg.points:
-        #         point: Point
-        #         pose = PoseStamped()
-        #         pose.pose.position = point
-        #         self.get_logger().info(f"{point}")
-        #         goal.poses.append(pose)
+        if dist < dist_threshold:
+            self.get_logger().info(f"Waypoint reached!")
+            self.remaining_waypoints.pop(0)
 
-        #     self.waypoint_action_client.send_goal_async(goal, self.waypoint_feedback_cb)
-        #     self.waypoints_sent = True
-        # if not self.waypoints_sent:
-        #     goal = NavigateToPose.Goal()
-        #     goal.pose.pose.position = self.cached_route_msg.points[1]
-        #     self.nav_to_pose_client.send_goal_async(goal)
-        #     self.waypoints_sent = True
+        self.goal_pose_pub.publish(self.getNextGoalPose(bl_to_map_tf))
+
+    def getNextGoalPose(self, tf: TransformStamped) -> PoseStamped:
+        waypoint: Point = self.remaining_waypoints[0]
+        trans = tf.transform.translation
+        goal_pose = PoseStamped()
+        goal_pose.header.stamp = self.get_clock().now().to_msg()
+        goal_pose.header.frame_id = "map"
+        goal_pose.pose.position = waypoint
+
+        # Make the heading point in the same direction as vector A->B,
+        # where A is the robot's position and B is the waypoint
+        dx = waypoint.x - trans.x
+        dy = waypoint.y - trans.y
+        goal_yaw = np.arctan2(dy, dx)
+        quat = R.from_euler("z", goal_yaw).as_quat()
+        goal_pose.pose.orientation.x = quat[0]
+        goal_pose.pose.orientation.y = quat[1]
+        goal_pose.pose.orientation.z = quat[2]
+        goal_pose.pose.orientation.w = quat[3]
+
+        return goal_pose
 
     def waypoint_feedback_cb(self, feedback: FollowWaypoints.Feedback):
         self.get_logger().info(f"Waypoint feedback: {feedback}")
@@ -304,37 +303,36 @@ class RoutePlanner(Node):
         self.cached_route_msg = route_msg
         # self.full_route_pub.publish(route_msg)
 
-        # if do_plotting:
-
-        #     plt.style.use("seaborn")
-
-        #     # Re-order planting points w.r.t. route
-        #     planting_points = planting_points[route]
-
-        #     plt.plot(planting_points[:, 0], planting_points[:, 1])
-        #     plt.scatter(planting_points[:, 0], planting_points[:, 1])
-        #     plt.scatter(planting_points[0, 0], planting_points[0, 1], c="g", s=250)
-
-        #     plt.xlabel("x (meters)")
-        #     plt.ylabel("y (meters)")
-        #     plt.title(
-        #         f"Iterative stochastic local search result for {len(route)} seedlings"
-        #     )
-        #     plt.show()
-
     def setUpParameters(self):
-        use_fasttsp_param_desc = ParameterDescriptor()
-        use_fasttsp_param_desc.description = (
-            "Use Fast-TCP instead of Ant Colony Optimization. Defaults to True."
+        waypoint_check_freq_param_desc = ParameterDescriptor()
+        waypoint_check_freq_param_desc.description = (
+            "Frequency at which to update goal_pose. Hz."
         )
-        use_fasttsp_param_desc.type = ParameterType.PARAMETER_BOOL
-        self.declare_parameter("use_fasttsp", True, use_fasttsp_param_desc)
+        waypoint_check_freq_param_desc.type = ParameterType.PARAMETER_DOUBLE
+        self.declare_parameter(
+            "waypoint_check_freq", 0.5, waypoint_check_freq_param_desc
+        )
+
+        waypoint_distance_threshold_param_desc = ParameterDescriptor()
+        waypoint_distance_threshold_param_desc.description = "Waypoints must be this close to the robot to be treated as reached. Meters."
+        waypoint_distance_threshold_param_desc.type = ParameterType.PARAMETER_DOUBLE
+        self.declare_parameter(
+            "waypoint_distance_threshold", 0.25, waypoint_distance_threshold_param_desc
+        )
+
+        # TODO: Should waypoint headings even be considered? Or should they be treated as true points, not poses? WSH.
+        waypoint_heading_threshold_param_desc = ParameterDescriptor()
+        waypoint_heading_threshold_param_desc.description = "Waypoints must have headings this close to the robot's heading to be treated as reached. Radians."
+        waypoint_heading_threshold_param_desc.type = ParameterType.PARAMETER_DOUBLE
+        self.declare_parameter(
+            "waypoint_heading_threshold", 0.25, waypoint_heading_threshold_param_desc
+        )
 
 
 def main(args=None):
     rclpy.init(args=args)
 
-    node = RoutePlanner()
+    node = WaypointManager()
 
     rclpy.spin(node)
 
