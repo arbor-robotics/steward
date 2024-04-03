@@ -1,6 +1,9 @@
 from os import name, path, environ, getcwd
 
-from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.launch_description_sources import (
+    PythonLaunchDescriptionSource,
+    AnyLaunchDescriptionSource,
+)
 from launch.actions import IncludeLaunchDescription, SetEnvironmentVariable
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
@@ -102,6 +105,17 @@ def generate_launch_description():
         package="waypoint_management", executable="waypoint_manager"
     )
 
+    # See: https://github.com/RobotWebTools/rosbridge_suite/blob/ros2/rosbridge_server/launch/rosbridge_websocket_launch.xml
+    webbridge = IncludeLaunchDescription(
+        AnyLaunchDescriptionSource(
+            [
+                path.join(get_package_share_directory("rosbridge_server"), "launch"),
+                "/rosbridge_websocket_launch.xml",
+            ]
+        ),
+        launch_arguments={"port": "9090"}.items(),
+    )
+
     return LaunchDescription(
         [
             camera_processor,
@@ -116,5 +130,6 @@ def generate_launch_description():
             # rviz,
             urdf_publisher,
             waypoint_manager,
+            webbridge,
         ]
     )
