@@ -19,6 +19,7 @@ from geometry_msgs.msg import Point, PoseStamped, TransformStamped, Transform
 from nav_msgs.msg import OccupancyGrid
 from nav2_msgs.action import FollowWaypoints, NavigateToPose
 from std_msgs.msg import Header
+from std_srvs.srv import Trigger
 from steward_msgs.msg import Route, ForestPlan
 from visualization_msgs.msg import Marker, MarkerArray
 
@@ -40,7 +41,18 @@ class WaypointManager(Node):
 
         self.goal_pose_pub = self.create_publisher(PoseStamped, "/goal_pose", 10)
 
+        self.start_service = self.create_service(
+            Trigger, "start_waypoint_manager", self.startServiceCb
+        )
+
+        self.is_started = False
+
         self.remaining_waypoints = []
+
+    def startServiceCb(self, req: Trigger.Request, response: Trigger.Response):
+        self.is_started = True
+        response.success = True
+        return response
 
     # TODO: This REALLY needs to be made a service, not a subscription. WSH.
     def routeCb(self, msg: Route):
@@ -77,7 +89,8 @@ class WaypointManager(Node):
             self.get_logger().info(f"Waypoint reached!")
             self.remaining_waypoints.pop(0)
 
-        self.goal_pose_pub.publish(self.getNextGoalPose(bl_to_map_tf))
+        if self.is_started:
+            self.goal_pose_pub.publish(self.getNextGoalPose(bl_to_map_tf))
 
     def getNextGoalPose(self, tf: TransformStamped) -> PoseStamped:
         waypoint: Point = self.remaining_waypoints[0]

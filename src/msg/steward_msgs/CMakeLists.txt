@@ -15,10 +15,12 @@ ament_auto_find_build_dependencies() # Find dependencies listed in package.xml
 # Find message files
 file(GLOB_RECURSE msg_filenames RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "msg/*.msg") # Find all message files
 file(GLOB_RECURSE srv_filenames RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "srv/*.srv") # Find all srv files
+file(GLOB_RECURSE action_filenames RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "action/*.action") # Find all action files
 rosidl_generate_interfaces(
   ${PROJECT_NAME}
   ${msg_filenames}
   ${srv_filenames}
+  ${action_filenames}
   DEPENDENCIES
   ${${PROJECT_NAME}_FOUND_BUILD_DEPENDS}
 )

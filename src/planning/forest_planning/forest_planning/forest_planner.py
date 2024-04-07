@@ -1,10 +1,9 @@
 import numpy as np
 import rclpy
+from rclpy.action import ActionServer
+from rclpy.action.server import ServerGoalHandle
 from rclpy.node import Node, ParameterDescriptor, ParameterType
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
-from steward_msgs.msg import ForestPlan
-from nav_msgs.msg import OccupancyGrid
-from geometry_msgs.msg import Point
 from time import time
 from tqdm import tqdm, trange
 from scipy.spatial.distance import pdist, squareform
@@ -14,6 +13,12 @@ from skimage import data, color
 from skimage.draw import disk
 from skimage.transform import rescale, resize, downscale_local_mean
 import cv2
+
+# ROS interfaces
+from geometry_msgs.msg import Point
+from nav_msgs.msg import OccupancyGrid
+from steward_msgs.action import CreateForestPlan
+from steward_msgs.msg import ForestPlan
 
 
 class BoundCell:
@@ -52,6 +57,15 @@ class RoutePlanner(Node):
 
         PLAN_PUBLISH_RATE = self.get_parameter("plan_publish_freq").value
         self.create_timer(1 / PLAN_PUBLISH_RATE, self.publishPlan)
+
+        self.action_server = ActionServer(
+            self, CreateForestPlan, "create_forest_plan", self.actionCb
+        )
+
+    def actionCb(self, goal_handle: ServerGoalHandle):
+        result = CreateForestPlan.Result()
+        goal_handle.canceled()
+        return result
 
     def publishPlan(self) -> None:
         if self.forest_plan is None:
