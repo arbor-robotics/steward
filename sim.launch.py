@@ -116,10 +116,13 @@ def generate_launch_description():
         launch_arguments={"port": "9090"}.items(),
     )
 
+    health_monitor = Node(package="diagnostics", executable="health_monitor")
+
     return LaunchDescription(
         [
             camera_processor,
             forest_planner,
+            health_monitor,
             joint_state_publisher,
             map_loader,
             odom_bl,

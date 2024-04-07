@@ -5,45 +5,43 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPo
 # ROS interfaces
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus as Status
 from std_msgs.msg import Header
-from steward_msgs.srv import GetGlobalHealth
+from steward_msgs.msg import State as StateMsg
+from steward_msgs.srv import RequestState, GetGlobalHealth
+
+State = {0: "PAUSED", 1: "DRIVING", 2: "PLANTING"}
 
 
-class HealthMonitor(Node):
+class BehaviorFSM(Node):
     """
     Subscribes to /diagnostics (DiagnosticArray)
     Publishes to /diagnostic_agg (DiagnosticArray)
     """
 
     def __init__(self):
-        super().__init__("health_monitor")
+        super().__init__("behavior_fsm")
 
         self.declareParams()
 
-        self.create_subscription(DiagnosticArray, "/diagnostics", self.diagnosticCb, 10)
-
-        self.diagnostic_pub = self.create_publisher(
-            DiagnosticArray, "/diagnostics_aggr", 10
+        self.create_publisher(StateMsg, "/behavior/current_state", 10)
+        self.create_service(
+            RequestState, "/behavior/request_state", self.stateRequestCb
+        )
+        self.get_global_health_client = self.create_client(
+            GetGlobalHealth, "/diagnostics/get_global_health"
         )
 
-        self.required_ok_nodes = ["route_planner"]
+        self.req = GetGlobalHealth.Request()
+        print("Calling service!")
+        self.future = self.get_global_health_client.call_async(self.req)
+        rclpy.spin_until_future_complete(self, self.future)
+        print(self.future.result())
 
-        timer_freq = self.get_parameter("publish_freq").value
-        self.diagnostic_pub_timer = self.create_timer(
-            1 / timer_freq, self.publishStatus
+    def stateRequestCb(
+        self, request: RequestState.Request, response: RequestState.Response
+    ) -> RequestState.Response:
+        self.get_logger().info(
+            f"Got request to change state to {State[request.requested_state]}"
         )
-
-        self.get_global_status_service = self.create_service(
-            GetGlobalHealth, "/diagnostics/get_global_health", self.getGlobalStatusCb
-        )
-
-        self.statuses = {}
-
-    def getGlobalStatusCb(
-        self, request: GetGlobalHealth.Request, response: GetGlobalHealth.Response
-    ):
-        self.get_logger().info(f"Got request for global status.")
-        response.global_health = self.statuses["global"]
-        self.get_logger().info(f"Returning {response}")
         return response
 
     def publishStatus(self):
@@ -53,7 +51,7 @@ class HealthMonitor(Node):
             print(isinstance(status, Status))
             status_array.status.append(status)
 
-        status_array.header = self.getHeader()
+        # status_array.header = self.getHeader()
 
         print(status_array)
         self.diagnostic_pub.publish(status_array)
@@ -103,7 +101,7 @@ class HealthMonitor(Node):
 def main(args=None):
     rclpy.init(args=args)
 
-    node = HealthMonitor()
+    node = BehaviorFSM()
 
     rclpy.spin(node)
 
