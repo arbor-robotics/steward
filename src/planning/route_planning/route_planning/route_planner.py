@@ -15,6 +15,7 @@ from tf2_ros.transform_listener import TransformListener
 
 # ROS interfaces
 from builtin_interfaces.msg import Time as RosTime
+from diagnostic_msgs.msg import DiagnosticStatus as Status, DiagnosticArray
 from geometry_msgs.msg import Point, PoseStamped, TransformStamped
 from nav_msgs.msg import OccupancyGrid
 from nav2_msgs.action import FollowWaypoints, NavigateToPose
@@ -72,6 +73,22 @@ class RoutePlanner(Node):
 
         self.waypoints_sent: bool = False
 
+        self.status_pub = self.create_publisher(DiagnosticArray, "/diagnostics", 10)
+        self.publishStatus(Status.ERROR, "Route not yet generated.")
+
+    def publishStatus(self, level, description: str) -> None:
+        """Publish an initial ERROR state while the route is not yet generated"""
+        status = Status()
+        status.level = level
+        status.name = self.get_name()  # Set to the node's name
+        status.message = description
+
+        status_array = DiagnosticArray()
+        status_array.status.append(status)
+        status_array.header = self.getHeader()
+
+        self.status_pub.publish(status_array)
+
     def publishCachedRoute(self) -> None:
         if self.cached_route_msg is None:
             self.get_logger().warning("Route not yet calculated. Waiting to publish.")
@@ -82,24 +99,7 @@ class RoutePlanner(Node):
         self.publishForestPlanMarker(self.cached_route_msg.points)
         self.publishRouteMarker(self.cached_route_msg.points)
 
-        # goal = FollowWaypoints.Goal()
-
-        # if not self.waypoints_sent:
-        #     self.get_logger().info("LET'S DO THIS")
-        #     for point in self.cached_route_msg.points:
-        #         point: Point
-        #         pose = PoseStamped()
-        #         pose.pose.position = point
-        #         self.get_logger().info(f"{point}")
-        #         goal.poses.append(pose)
-
-        #     self.waypoint_action_client.send_goal_async(goal, self.waypoint_feedback_cb)
-        #     self.waypoints_sent = True
-        # if not self.waypoints_sent:
-        #     goal = NavigateToPose.Goal()
-        #     goal.pose.pose.position = self.cached_route_msg.points[1]
-        #     self.nav_to_pose_client.send_goal_async(goal)
-        #     self.waypoints_sent = True
+        self.publishStatus(Status.OK, "Route published.")
 
     def waypoint_feedback_cb(self, feedback: FollowWaypoints.Feedback):
         self.get_logger().info(f"Waypoint feedback: {feedback}")
@@ -229,8 +229,11 @@ class RoutePlanner(Node):
     def generateRoute(self):
 
         if self.cached_plan_msg is None:
-            self.get_logger().info(
-                "Forest Plan not yet received. Skipping route generation."
+            # self.get_logger().info(
+            #     "Forest Plan not yet received. Skipping route generation."
+            # )
+            self.publishStatus(
+                Status.ERROR, "Forest Plan not yet received. Skipping route generation."
             )
             return
 
