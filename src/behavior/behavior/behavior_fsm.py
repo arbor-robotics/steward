@@ -8,7 +8,22 @@ from std_msgs.msg import Header
 from steward_msgs.msg import State as StateMsg
 from steward_msgs.srv import RequestState, GetGlobalHealth
 
-State = {0: "PAUSED", 1: "DRIVING", 2: "PLANTING"}
+
+class State:
+    PAUSED = 0
+    DRIVING = 1
+    PLANTING = 2
+
+
+STATE_TO_STRING = {0: "PAUSED", 1: "DRIVING", 2: "PLANTING"}
+
+
+class Health:
+    # https://docs.ros.org/en/api/diagnostic_msgs/html/msg/DiagnosticStatus.html
+    OK = 0
+    WARN = 1
+    ERROR = 2
+    # Staleness is not valid for global health
 
 
 class BehaviorFSM(Node):
@@ -22,26 +37,69 @@ class BehaviorFSM(Node):
 
         self.declareParams()
 
-        self.create_publisher(StateMsg, "/behavior/current_state", 10)
+        self.current_state_pub = self.create_publisher(
+            StateMsg, "/behavior/current_state", 10
+        )
+
+        publish_freq = self.get_parameter("publish_freq").value
+        self.create_timer(1 / publish_freq, self.publishCurrentState)
+
         self.create_service(
             RequestState, "/behavior/request_state", self.stateRequestCb
         )
-        self.get_global_health_client = self.create_client(
-            GetGlobalHealth, "/diagnostics/get_global_health"
+        self.create_subscription(
+            DiagnosticArray, "/diagnostics_aggr", self.diagnosticCb, 10
         )
 
-        self.req = GetGlobalHealth.Request()
-        print("Calling service!")
-        self.future = self.get_global_health_client.call_async(self.req)
-        rclpy.spin_until_future_complete(self, self.future)
-        print(self.future.result())
+        self.current_health = Health.ERROR
+        self.current_state = State.PAUSED
+
+    def publishCurrentState(self):
+        self.current_state_pub.publish(self.current_state)
 
     def stateRequestCb(
         self, request: RequestState.Request, response: RequestState.Response
     ) -> RequestState.Response:
+
+        to_state = request.requested_state.value
+
         self.get_logger().info(
-            f"Got request to change state to {State[request.requested_state]}"
+            f"Got request to change state to {STATE_TO_STRING[to_state]}"
         )
+
+        # Ignore redundant state changes
+        if self.current_state == to_state:
+            response.success = True
+            response.description = f"Already at {to_state}"
+            return response
+
+        # We can always enter the PAUSE state
+        if to_state == State.PAUSED:
+            self.current_state = State.PAUSED
+            response.success = True
+            return response
+
+        if self.current_health != Health.OK and to_state != State.PAUSED:
+            response.success = False
+            response.description = "Cannot exit PAUSED while status is ERROR"
+            return response
+
+        if self.current_state == State.PAUSED:
+            if to_state == State.DRIVING:
+                if self.current_health == Health.OK:
+                    print("Moving to DRIVING")
+                else:
+                    print("Can't move to DRIVING. Health not OK!")
+            else:
+                print(
+                    f"Unsupported transition from {STATE_TO_STRING[self.current_state]} to {STATE_TO_STRING[to_state]}"
+                )
+
+        else:
+            print(
+                f"Unsupported transition from {STATE_TO_STRING[self.current_state]} to {STATE_TO_STRING[to_state]}"
+            )
+
         return response
 
     def publishStatus(self):
@@ -57,23 +115,27 @@ class BehaviorFSM(Node):
         self.diagnostic_pub.publish(status_array)
 
     def diagnosticCb(self, msg: DiagnosticArray):
-        # Our status is OK unless a node tells us otherwise
-        global_status = Status()
-        global_status.name = "global"
-
         for status in msg.status:
             status: Status
 
-            self.statuses[status.name] = status
+            # Convert from byte to int
+            level = int.from_bytes(status.level, byteorder="big")
 
-            if status.name in self.required_ok_nodes and status.level != Status.OK:
-                global_status.level = Status.ERROR
-                global_status.message += status.message
-                self.get_logger().error(
-                    f"Global status is now ERROR due to {status.name}: {status.message}"
-                )
+            if status.name != "global":
+                continue
 
-        self.statuses["global"] = global_status
+            if level == Health.OK:
+                self.current_health = Health.OK
+            elif level == Health.WARN:
+                self.current_health = Health.WARN
+            elif level == Health.ERROR:
+                self.current_health = Health.ERROR
+            else:
+                self.get_logger().error(f"Received invalid global health ID: {level}")
+
+        if self.current_health == Health.ERROR:
+            self.get_logger().error(f"Pausing due to ERROR state.")
+            self.current_state = State.PAUSED
 
     def declareParams(self) -> None:
         descr = ParameterDescriptor()
