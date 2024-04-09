@@ -48,10 +48,6 @@ class StewardFSM(object):
     def callDrivingAction(self):
         print("Calling driving action")
 
-    def updateCounter(self):
-        """Dear Diary, today I saved Mr. Whiskers. Again."""
-        self.trees_planted += 1
-
     @property
     def is_healthy(self):
         """Basically a coin toss."""

@@ -1,0 +1,10 @@
+# Request
+# Empty. Next waypoint is stored internally in the WaypointManager
+---
+# Result
+bool success
+string message
+uint8 num_remaining_waypoints
+---
+# Feedback
+float32 distance # meters

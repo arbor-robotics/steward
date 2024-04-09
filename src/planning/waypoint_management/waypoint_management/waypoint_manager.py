@@ -1,9 +1,10 @@
 import numpy as np
 import rclpy
-from rclpy.action import ActionClient
+from rclpy.action import ActionServer
+from rclpy.action.server import ServerGoalHandle
 from rclpy.node import Node, ParameterDescriptor, ParameterType
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
-from time import time
+from time import time, sleep
 from tqdm import tqdm, trange
 from scipy.spatial.distance import pdist, squareform
 from scipy.spatial.transform import Rotation as R
@@ -20,6 +21,7 @@ from nav_msgs.msg import OccupancyGrid
 from nav2_msgs.action import FollowWaypoints, NavigateToPose
 from std_msgs.msg import Header
 from std_srvs.srv import Trigger
+from steward_msgs.action import DriveToNextWaypoint
 from steward_msgs.msg import Route, ForestPlan
 from visualization_msgs.msg import Marker, MarkerArray
 
@@ -45,9 +47,60 @@ class WaypointManager(Node):
             Trigger, "start_waypoint_manager", self.startServiceCb
         )
 
+        self.waypoint_action_server = ActionServer(
+            self,
+            DriveToNextWaypoint,
+            "/planning/drive_to_waypoint",
+            self.driveToWaypointCb,
+        )
+
         self.is_started = False
 
         self.remaining_waypoints = []
+
+    def getActionResult(self, success: bool = False, message: str = ""):
+        result = DriveToNextWaypoint.Result()
+
+        result.num_remaining_waypoints = len(self.remaining_waypoints)
+
+        result.success = success
+        result.message = message
+        return result
+
+    def driveToWaypointCb(self, goal_handle: ServerGoalHandle):
+        if len(self.remaining_waypoints) < 1:
+            # No more waypoints
+            return self.getActionResult(False, "No more waypoints to drive to.")
+
+        try:
+            bl_to_map_tf = self.tf_buffer.lookup_transform(
+                "map", "base_link", rclpy.time.Time()
+            )
+        except TransformException as ex:
+            self.get_logger().info(
+                f"Could not find base_link->map transform. Skipping."
+            )
+            return self.getActionResult(
+                False, "Could not find base_link->map transform. Skipping."
+            )
+
+        self.goal_pose_pub.publish(self.getNextGoalPose(bl_to_map_tf))
+
+        dist_threshold = self.get_parameter("waypoint_distance_threshold").value
+
+        while True:
+            dist = self.distance(bl_to_map_tf.transform, self.remaining_waypoints[0])
+            # self.get_logger().info(f"Dist is: {dist}")
+
+            if dist < dist_threshold:
+                self.get_logger().info(f"Waypoint reached!")
+                self.remaining_waypoints.pop(0)
+                return self.getActionResult(True, "Waypoint reached.")
+
+            feedback = DriveToNextWaypoint.Feedback()
+            feedback.distance = dist
+            goal_handle.publish_feedback(feedback)
+            sleep(1)
 
     def startServiceCb(self, req: Trigger.Request, response: Trigger.Response):
         self.is_started = True
@@ -205,116 +258,9 @@ class WaypointManager(Node):
     def rosTimeToSeconds(self, rostime: RosTime) -> float:
         return rostime.sec + 1e9 * rostime.nanosec
 
-    def calculateRoute(self, route_points) -> np.ndarray:
-        distances = pdist(route_points)
-
-        use_fasttsp = self.get_parameter("use_fasttsp").value
-        if use_fasttsp:
-            distances = squareform(
-                distances.astype(np.uint16), force="tomatrix", checks=False
-            )
-            self.get_logger().debug(f"Using Fast-TCP.")
-            self.get_logger().debug("Calculating route.")
-
-            route = np.asarray(fast_tsp.find_tour(distances.astype(int)))
-
-        else:
-            distances = squareform(distances, force="tomatrix", checks=False)
-            np.fill_diagonal(distances, np.inf)  # Required by AntColony class
-            ant_colony = AntColony(
-                distances,
-                n_ants=1,
-                n_best=1,
-                n_iterations=1000,
-                decay=0.95,
-                alpha=1,
-                beta=1,
-            )
-            route = ant_colony.run()
-            route = np.asarray(route[0])[:, 0]
-        return route
-
     def forestPlanCb(self, forest_plan_msg: OccupancyGrid) -> None:
 
         self.cached_plan_msg = forest_plan_msg
-
-    def generateRoute(self):
-
-        if self.cached_plan_msg is None:
-            self.get_logger().info(
-                "Forest Plan not yet received. Skipping route generation."
-            )
-            return
-
-        forest_plan_msg = self.cached_plan_msg
-
-        try:
-            bl_to_map_tf = self.tf_buffer.lookup_transform(
-                "map", "base_link", rclpy.time.Time()
-            )
-        except TransformException as ex:
-            self.get_logger().info(
-                f"Could not find base_link->map transform. Skipping."
-            )
-            return
-
-        if self.last_time_plan_received >= self.rosTimeToSeconds(
-            forest_plan_msg.info.map_load_time
-        ):
-            self.get_logger().info("Skipping stale Forest Plan")
-            return
-        else:
-            self.get_logger().info("Received a new Forest Plan")
-            self.last_time_plan_received = self.rosTimeToSeconds(
-                forest_plan_msg.info.map_load_time
-            )
-
-        # Convert list of ROS Point messages to np array
-        planting_points = self.getPointsFromOccupancyGrid(forest_plan_msg)
-
-        # append the robot's position
-        bl_to_map_tf: TransformStamped
-        robot_pos_x = bl_to_map_tf.transform.translation.x
-        robot_pos_y = bl_to_map_tf.transform.translation.y
-        planting_points = np.vstack(([robot_pos_x, robot_pos_y], planting_points))
-
-        self.get_logger().info(f"PLANTING POINTS: {planting_points.shape}")
-
-        self.get_logger().debug("Calculating distances.")
-        self.get_logger().debug("Converting distances to square form.")
-
-        start = time()  # For measuring runtime
-
-        route = self.calculateRoute(planting_points)
-        for route_position, original_idx in enumerate(route):
-            if original_idx == 0:
-                robot_idx = route_position
-                # self.get_logger().info(f"ROBOT IS AT {route_position}")
-
-        route = np.roll(route, -robot_idx)
-
-        for route_position, original_idx in enumerate(route):
-            if original_idx == 0:
-                robot_idx = route_position
-                # self.get_logger().info(f"ROBOT IS AT {route_position}")
-
-        self.get_logger().debug(f"Done. Routing took {time() - start} seconds")
-
-        # Form a Route message
-        route_msg = Route()
-        route_msg.header = self.getHeader()
-
-        for i, route_idx in enumerate(route):
-            point_msg = Point()
-            point_msg.x, point_msg.y = planting_points[route_idx].tolist()
-            route_msg.points.append(point_msg)
-            route_msg.ids.append(i)  # TODO: Do we need IDs for each seedling?
-
-        # Publish the Route message
-        assert len(route) == len(route_msg.ids), "Route ID length mismatch"
-
-        self.cached_route_msg = route_msg
-        # self.full_route_pub.publish(route_msg)
 
     def setUpParameters(self):
         waypoint_check_freq_param_desc = ParameterDescriptor()

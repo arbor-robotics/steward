@@ -18,7 +18,7 @@ class State:
 
 
 class Transition:
-    UNPAUSE = 0
+    PLAY = 0
     PAUSE = 1
 
 
@@ -75,7 +75,7 @@ class BehaviorFSM(Node):
         print(request.transition)
 
         try:
-            if request.transition == Transition.UNPAUSE:
+            if request.transition == Transition.PLAY:
                 self.fsm.start()
                 response.success = True
             elif request.transition == Transition.PAUSE:
