@@ -1,0 +1,7 @@
+uint8 UNPAUSE = 0
+uint8 PAUSE = 1
+
+uint8 transition
+---
+bool success
+string description

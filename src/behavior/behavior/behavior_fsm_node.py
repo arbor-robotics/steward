@@ -8,13 +8,18 @@ from behavior.behavior_fsm import StewardFSM
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus as Status
 from std_msgs.msg import Header
 from steward_msgs.msg import State as StateMsg
-from steward_msgs.srv import RequestState, GetGlobalHealth
+from steward_msgs.srv import RequestTransition, GetGlobalHealth
 
 
 class State:
     PAUSED = 0
     DRIVING = 1
     PLANTING = 2
+
+
+class Transition:
+    UNPAUSE = 0
+    PAUSE = 1
 
 
 STATE_TO_STRING = {0: "PAUSED", 1: "DRIVING", 2: "PLANTING"}
@@ -48,7 +53,7 @@ class BehaviorFSM(Node):
         self.create_timer(1 / publish_freq, self.publishCurrentState)
 
         self.create_service(
-            RequestState, "/behavior/request_state", self.stateRequestCb
+            RequestTransition, "/behavior/request_state", self.transitionRequestCb
         )
         self.create_subscription(
             DiagnosticArray, "/diagnostics_aggr", self.diagnosticCb, 10
@@ -63,48 +68,35 @@ class BehaviorFSM(Node):
         state_msg = StateMsg(value=STRING_TO_STATE[self.fsm.state])
         self.current_state_pub.publish(state_msg)
 
-    def stateRequestCb(
-        self, request: RequestState.Request, response: RequestState.Response
-    ) -> RequestState.Response:
+    def transitionRequestCb(
+        self, request: RequestTransition.Request, response: RequestTransition.Response
+    ) -> RequestTransition.Response:
 
-        to_state = request.requested_state.value
+        print(request.transition)
 
-        self.get_logger().info(
-            f"Got request to change state to {STATE_TO_STRING[to_state]}"
-        )
-
-        # Ignore redundant state changes
-        if self.current_state == to_state:
-            response.success = True
-            response.description = f"Already at {to_state}"
-            return response
-
-        # We can always enter the PAUSE state
-        if to_state == State.PAUSED:
-            self.current_state = State.PAUSED
-            response.success = True
-            return response
-
-        if self.current_health != Health.OK and to_state != State.PAUSED:
-            response.success = False
-            response.description = "Cannot exit PAUSED while status is ERROR"
-            return response
-
-        if self.current_state == State.PAUSED:
-            if to_state == State.DRIVING:
-                if self.current_health == Health.OK:
-                    print("Moving to DRIVING")
-                else:
-                    print("Can't move to DRIVING. Health not OK!")
+        try:
+            if request.transition == Transition.UNPAUSE:
+                self.fsm.start()
+                response.success = True
+            elif request.transition == Transition.PAUSE:
+                self.fsm.pause()
+                response.success = True
             else:
-                print(
-                    f"Unsupported transition from {STATE_TO_STRING[self.current_state]} to {STATE_TO_STRING[to_state]}"
+                self.get_logger().warning(
+                    f"Unsupported transition '{request.transition}'. Ignoring."
                 )
+                response.success = False
+                response.description = (
+                    f"Unsupported transition '{request.transition}'. Ignoring."
+                )
+        except Exception as e:
+            self.get_logger().error(f"Unsupported transition: {e}")
+            response.success = False
+            response.description = str(e)
 
-        else:
-            print(
-                f"Unsupported transition from {STATE_TO_STRING[self.current_state]} to {STATE_TO_STRING[to_state]}"
-            )
+        # to_state = STATE_TO_STRING[request.requested_state.value]
+
+        # self.fsm.trigger(to_state)
 
         return response
 

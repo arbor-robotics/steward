@@ -40,7 +40,7 @@ class StewardFSM(object):
         )
 
         self.machine.add_transition("onError", "*", "PAUSED")
-        self.machine.add_transition("onPause", "*", "PAUSED")
+        self.machine.add_transition("pause", "*", "PAUSED")
 
     def callPlantingAction(self):
         print("Calling planting action")
