@@ -18,6 +18,6 @@ setup(
     license="TODO: License declaration",  # See package.xml
     tests_require=["pytest"],
     entry_points={
-        "console_scripts": ["behavior_fsm = behavior.behavior_fsm:main"],
+        "console_scripts": ["behavior_fsm_node = behavior.behavior_fsm_node:main"],
     },
 )

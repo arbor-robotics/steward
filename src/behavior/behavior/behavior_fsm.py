@@ -1,178 +1,76 @@
-import rclpy
-from rclpy.node import Node, ParameterDescriptor, ParameterType
-from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
-
-# ROS interfaces
-from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus as Status
-from std_msgs.msg import Header
-from steward_msgs.msg import State as StateMsg
-from steward_msgs.srv import RequestState, GetGlobalHealth
+from transitions import Machine, State
+from transitions.extensions import GraphMachine
+import random
 
 
-class State:
-    PAUSED = 0
-    DRIVING = 1
-    PLANTING = 2
+class StewardFSM(object):
 
-
-STATE_TO_STRING = {0: "PAUSED", 1: "DRIVING", 2: "PLANTING"}
-
-
-class Health:
-    # https://docs.ros.org/en/api/diagnostic_msgs/html/msg/DiagnosticStatus.html
-    OK = 0
-    WARN = 1
-    ERROR = 2
-    # Staleness is not valid for global health
-
-
-class BehaviorFSM(Node):
-    """
-    Subscribes to /diagnostics (DiagnosticArray)
-    Publishes to /diagnostic_agg (DiagnosticArray)
-    """
+    # Define some states. Most of the time, narcoleptic superheroes are just like
+    # everyone else. Except for...
+    states = [
+        State("PAUSED"),
+        State("DRIVING", on_enter="callDrivingAction"),
+        State("PLANTING", on_enter="callPlantingAction"),
+    ]
 
     def __init__(self):
-        super().__init__("behavior_fsm")
 
-        self.declareParams()
+        # What have we accomplished today?
+        self.trees_planted = 0
 
-        self.current_state_pub = self.create_publisher(
-            StateMsg, "/behavior/current_state", 10
+        # Initialize the state machine
+        self.machine = GraphMachine(
+            model=self, states=StewardFSM.states, initial="PAUSED"
         )
 
-        publish_freq = self.get_parameter("publish_freq").value
-        self.create_timer(1 / publish_freq, self.publishCurrentState)
+        # Add some transitions. We could also define these using a static list of
+        # dictionaries, as we did with states above, and then pass the list to
+        # the Machine initializer as the transitions= argument.
 
-        self.create_service(
-            RequestState, "/behavior/request_state", self.stateRequestCb
-        )
-        self.create_subscription(
-            DiagnosticArray, "/diagnostics_aggr", self.diagnosticCb, 10
-        )
-
-        self.current_health = Health.ERROR
-        self.current_state = State.PAUSED
-
-    def publishCurrentState(self):
-        self.current_state_pub.publish(self.current_state)
-
-    def stateRequestCb(
-        self, request: RequestState.Request, response: RequestState.Response
-    ) -> RequestState.Response:
-
-        to_state = request.requested_state.value
-
-        self.get_logger().info(
-            f"Got request to change state to {STATE_TO_STRING[to_state]}"
+        # At some point, every superhero must rise and shine.
+        self.machine.add_transition(
+            trigger="start", source="PAUSED", dest="DRIVING", conditions=["is_healthy"]
         )
 
-        # Ignore redundant state changes
-        if self.current_state == to_state:
-            response.success = True
-            response.description = f"Already at {to_state}"
-            return response
+        self.machine.add_transition(
+            "goalReached", "DRIVING", "PLANTING", conditions=["is_healthy"]
+        )
+        self.machine.add_transition(
+            "treePlanted", "PLANTING", "DRIVING", conditions=["is_healthy"]
+        )
 
-        # We can always enter the PAUSE state
-        if to_state == State.PAUSED:
-            self.current_state = State.PAUSED
-            response.success = True
-            return response
+        self.machine.add_transition("onError", "*", "PAUSED")
+        self.machine.add_transition("onPause", "*", "PAUSED")
 
-        if self.current_health != Health.OK and to_state != State.PAUSED:
-            response.success = False
-            response.description = "Cannot exit PAUSED while status is ERROR"
-            return response
+    def callPlantingAction(self):
+        print("Calling planting action")
 
-        if self.current_state == State.PAUSED:
-            if to_state == State.DRIVING:
-                if self.current_health == Health.OK:
-                    print("Moving to DRIVING")
-                else:
-                    print("Can't move to DRIVING. Health not OK!")
-            else:
-                print(
-                    f"Unsupported transition from {STATE_TO_STRING[self.current_state]} to {STATE_TO_STRING[to_state]}"
-                )
+    def callDrivingAction(self):
+        print("Calling driving action")
 
-        else:
-            print(
-                f"Unsupported transition from {STATE_TO_STRING[self.current_state]} to {STATE_TO_STRING[to_state]}"
-            )
+    def updateCounter(self):
+        """Dear Diary, today I saved Mr. Whiskers. Again."""
+        self.trees_planted += 1
 
-        return response
+    @property
+    def is_healthy(self):
+        """Basically a coin toss."""
+        return random.random() < 0.5
 
-    def publishStatus(self):
-        status_array = DiagnosticArray()
-
-        for status in self.statuses.values():
-            print(isinstance(status, Status))
-            status_array.status.append(status)
-
-        # status_array.header = self.getHeader()
-
-        print(status_array)
-        self.diagnostic_pub.publish(status_array)
-
-    def diagnosticCb(self, msg: DiagnosticArray):
-        for status in msg.status:
-            status: Status
-
-            # Convert from byte to int
-            level = int.from_bytes(status.level, byteorder="big")
-
-            if status.name != "global":
-                continue
-
-            if level == Health.OK:
-                self.current_health = Health.OK
-            elif level == Health.WARN:
-                self.current_health = Health.WARN
-            elif level == Health.ERROR:
-                self.current_health = Health.ERROR
-            else:
-                self.get_logger().error(f"Received invalid global health ID: {level}")
-
-        if self.current_health == Health.ERROR:
-            self.get_logger().error(f"Pausing due to ERROR state.")
-            self.current_state = State.PAUSED
-
-    def declareParams(self) -> None:
-        descr = ParameterDescriptor()
-        descr.description = "Rate at which the aggregated array, includding the system-wide status, is published. Hz."
-        descr.type = ParameterType.PARAMETER_DOUBLE
-        self.declare_parameter("publish_freq", descriptor=descr, value=1.0)
-
-        descr = ParameterDescriptor()
-        descr.description = "Names of nodes that must have status of OK"
-        descr.type = ParameterType.PARAMETER_STRING_ARRAY
-        self.declare_parameter("required_ok_nodes", descriptor=descr)
-
-    def getHeader(self) -> Header:
-        """Forms a message Header.
-
-        Returns:
-            Header: The stamped and framed Header.
-        """
-        header = Header()
-        header.stamp = self.get_clock().now().to_msg()
-
-        return header
-
-
-def main(args=None):
-    rclpy.init(args=args)
-
-    node = BehaviorFSM()
-
-    rclpy.spin(node)
-
-    # Destroy the node explicitly
-    # (optional - otherwise it will be done automatically
-    # when the garbage collector destroys the node object)
-    node.destroy_node()
-    rclpy.shutdown()
+    def change_into_super_secret_costume(self):
+        print("Beauty, eh?")
 
 
 if __name__ == "__main__":
-    main()
+    machine = StewardFSM()
+    machine.get_graph().draw("my_state_diagram.png", prog="dot")
+    machine.start()
+
+    for i in range(10):
+        print(machine.state)
+        if machine.state == "PAUSED":
+            machine.start()
+        elif machine.state == "DRIVING":
+            machine.goalReached()
+        elif machine.state == "PLANTING":
+            machine.treePlanted()
