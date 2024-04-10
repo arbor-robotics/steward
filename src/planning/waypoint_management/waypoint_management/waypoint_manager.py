@@ -43,8 +43,8 @@ class WaypointManager(Node):
 
         self.goal_pose_pub = self.create_publisher(PoseStamped, "/goal_pose", 10)
 
-        self.go_to_waypoint_service = self.create_service(
-            Trigger, "/planning/go_to_waypoint", self.goToWaypointCb
+        self.go_to_waypoint_sub = self.create_subscription(
+            Empty, "/planning/go_to_waypoint", self.goToWaypointCb, 10
         )
 
         self.waypoint_reached_pub = self.create_publisher(
@@ -53,7 +53,7 @@ class WaypointManager(Node):
 
         self.remaining_waypoints = []
 
-    def goToWaypointCb(self, req: Trigger.Request, resp: Trigger.Response):
+    def goToWaypointCb(self, msg: Empty):
 
         try:
             bl_to_map_tf = self.tf_buffer.lookup_transform(
@@ -61,16 +61,8 @@ class WaypointManager(Node):
             )
         except TransformException as ex:
             self.get_logger().info(f"Could not transform map to base_link: {ex}")
-            resp.success = False
-            resp.message = f"Could not transform map to base_link: {ex}"
-            return resp
 
         self.goal_pose_pub.publish(self.getNextGoalPose(bl_to_map_tf))
-        resp.success = True
-        resp.message = (
-            f"Goal pose published, {len(self.remaining_waypoints)} waypoints remaining."
-        )
-        return resp
 
     # TODO: This REALLY needs to be made a service, not a subscription. WSH.
     def routeCb(self, msg: Route):
@@ -105,9 +97,6 @@ class WaypointManager(Node):
 
         if dist < dist_threshold:
             self.onWaypointReached()
-
-        else:
-            self.get_logger().info(f"Dist is {dist}")
 
     def onWaypointReached(self):
 

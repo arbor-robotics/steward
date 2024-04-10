@@ -2,7 +2,9 @@ import rclpy
 from rclpy.node import Node, ParameterDescriptor, ParameterType
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 
-from behavior.behavior_fsm import StewardFSM
+from time import sleep
+from transitions import Machine, State as TransitionsState
+from transitions.extensions import GraphMachine
 
 # ROS interfaces
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus as Status
@@ -25,6 +27,7 @@ class Transition:
 
 STATE_TO_STRING = {0: "PAUSED", 1: "DRIVING", 2: "PLANTING"}
 STRING_TO_STATE = {"PAUSED": 0, "DRIVING": 1, "PLANTING": 2}
+TRANSITION_TO_STRING = {0: "PLAY", 1: "PAUSE"}
 
 
 class Health:
@@ -44,60 +47,106 @@ class BehaviorFSM(Node):
     def __init__(self):
         super().__init__("behavior_fsm")
 
+        self.initMachine()
+
         self.declareParams()
 
+        # PUBLISHERS
         self.current_state_pub = self.create_publisher(
             StateMsg, "/behavior/current_state", 10
         )
-
-        publish_freq = self.get_parameter("publish_freq").value
-        self.create_timer(1 / publish_freq, self.publishCurrentState)
-
-        self.create_service(
-            RequestTransition, "/behavior/request_state", self.transitionRequestCb
-        )
+        # SUBSCRIBERS
         self.create_subscription(
             DiagnosticArray, "/diagnostics_aggr", self.diagnosticCb, 10
         )
-
-        self.waypoint_reached_sub = self.create_subscription(
+        self.create_subscription(
             Empty, "/events/waypoint_reached", self.waypointReachedCb, 10
         )
 
-        self.go_to_waypoint_client = self.create_client(
-            Trigger, "/planning/go_to_waypoint"
+        # SERVICES
+        publish_freq = self.get_parameter("publish_freq").value
+        self.create_timer(1 / publish_freq, self.publishCurrentState)
+        self.create_service(
+            RequestTransition, "/behavior/request_transition", self.transitionRequestCb
         )
 
-        self.fsm = StewardFSM(self.onDrivingStart)
+        # CLIENTS
+        self.go_to_waypoint_pub = self.create_publisher(
+            Empty, "/planning/go_to_waypoint", 10
+        )
 
         self.current_health = Health.ERROR
 
-    def waypointReachedCb(self, msg: Empty):
-        print("Waypoint reached.")
-        self.fsm.callPlantingAction()
+    def initMachine(self):
+        """
+        Create a Finite State Machine object using `transitions`
+        https://github.com/pytransitions/transitions
+        """
+        self.machine = GraphMachine(
+            model=self,
+            states=[
+                TransitionsState("PAUSED"),
+                TransitionsState("DRIVING", on_enter="onEnterDriving"),
+                TransitionsState("PLANTING", on_enter="onEnterPlanting"),
+            ],
+            initial="PAUSED",
+        )
 
-    def onDrivingStart(self):
-        print("Driving successfully started!")
-        self.go_to_waypoint_client.call(Trigger.Request())
+        self.machine.add_transition(
+            trigger="start", source="PAUSED", dest="DRIVING", conditions=["is_healthy"]
+        )
+        self.machine.add_transition(
+            "onGoalReached", "DRIVING", "PLANTING", conditions=["is_healthy"]
+        )
+        self.machine.add_transition(
+            "onTreePlanted", "PLANTING", "DRIVING", conditions=["is_healthy"]
+        )
+        self.machine.add_transition("onError", "*", "PAUSED")
+        self.machine.add_transition("pause", "*", "PAUSED")
+
+        self.get_graph().draw("my_state_diagram.png", prog="dot")
+
+    @property
+    def is_healthy(self):
+        return self.current_health == Health.OK
+
+    def onEnterDriving(self):
+        self.go_to_waypoint_pub.publish(Empty())
+
+    def onEnterPlanting(self):
+        print("Planting a tree")
+        sleep(1)
+        self.trigger("onTreePlanted")
+        pass
+
+    def waypointReachedCb(self, msg: Empty):
+        self.trigger("onGoalReached")
+        print("Waypoint reached.")
 
     def publishCurrentState(self):
-        print(self.fsm.state)
-        state_msg = StateMsg(value=STRING_TO_STATE[self.fsm.state])
+        print(self.state)
+        state_msg = StateMsg(value=STRING_TO_STATE[self.state])
         self.current_state_pub.publish(state_msg)
 
     def transitionRequestCb(
         self, request: RequestTransition.Request, response: RequestTransition.Response
     ) -> RequestTransition.Response:
 
-        print(request.transition)
+        print(f"Requested: {TRANSITION_TO_STRING[request.transition]}")
 
         try:
             if request.transition == Transition.PLAY:
-                self.fsm.start()
-                response.success = True
+                response.success = self.trigger("start")
+
+                print(f"IS HEALTH? {self.is_healthy}")
+                if response.success:
+                    response.description = f"State is now {self.state}"
+                else:
+                    response.description = f"Current health: {self.current_health}"
             elif request.transition == Transition.PAUSE:
-                self.fsm.pause()
-                response.success = True
+                response.success = self.trigger("pause")
+                if response.success:
+                    response.description = f"State is now {self.state}"
             else:
                 self.get_logger().warning(
                     f"Unsupported transition '{request.transition}'. Ignoring."
@@ -110,10 +159,6 @@ class BehaviorFSM(Node):
             self.get_logger().error(f"Unsupported transition: {e}")
             response.success = False
             response.description = str(e)
-
-        # to_state = STATE_TO_STRING[request.requested_state.value]
-
-        # self.fsm.trigger(to_state)
 
         return response
 
@@ -130,6 +175,11 @@ class BehaviorFSM(Node):
         self.diagnostic_pub.publish(status_array)
 
     def diagnosticCb(self, msg: DiagnosticArray):
+        """Extract the gobal status level from the aggregated diagnostic array.
+
+        Args:
+            msg (DiagnosticArray): The aggregated global diagnostic array.
+        """
         for status in msg.status:
             status: Status
 
@@ -140,17 +190,20 @@ class BehaviorFSM(Node):
                 continue
 
             if level == Health.OK:
+                print("OK")
                 self.current_health = Health.OK
             elif level == Health.WARN:
+                print("WARN")
                 self.current_health = Health.WARN
             elif level == Health.ERROR:
+                print("ERROR")
+                if self.current_health != Health.ERROR:
+                    # We've just transitioned to an error state.
+                    # Inform the FSM.
+                    self.trigger("onError")
                 self.current_health = Health.ERROR
             else:
                 self.get_logger().error(f"Received invalid global health ID: {level}")
-
-        if self.current_health == Health.ERROR:
-            self.get_logger().error(f"Pausing due to ERROR state.")
-            self.current_state = State.PAUSED
 
     def declareParams(self) -> None:
         descr = ParameterDescriptor()

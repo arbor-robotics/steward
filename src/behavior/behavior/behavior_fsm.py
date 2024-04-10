@@ -56,9 +56,6 @@ class StewardFSM(object):
         """Basically a coin toss."""
         return random.random() < 0.5
 
-    def change_into_super_secret_costume(self):
-        print("Beauty, eh?")
-
 
 if __name__ == "__main__":
     machine = StewardFSM()
