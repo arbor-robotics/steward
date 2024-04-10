@@ -132,7 +132,7 @@ def generate_launch_description():
             route_planner,
             # rviz,
             urdf_publisher,
-            # waypoint_manager,
+            waypoint_manager,
             webbridge,
         ]
     )

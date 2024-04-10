@@ -6,7 +6,8 @@ from behavior.behavior_fsm import StewardFSM
 
 # ROS interfaces
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus as Status
-from std_msgs.msg import Header
+from std_msgs.msg import Header, Empty
+from std_srvs.srv import Trigger
 from steward_msgs.msg import State as StateMsg
 from steward_msgs.srv import RequestTransition, GetGlobalHealth
 
@@ -59,9 +60,25 @@ class BehaviorFSM(Node):
             DiagnosticArray, "/diagnostics_aggr", self.diagnosticCb, 10
         )
 
-        self.fsm = StewardFSM()
+        self.waypoint_reached_sub = self.create_subscription(
+            Empty, "/events/waypoint_reached", self.waypointReachedCb, 10
+        )
+
+        self.go_to_waypoint_client = self.create_client(
+            Trigger, "/planning/go_to_waypoint"
+        )
+
+        self.fsm = StewardFSM(self.onDrivingStart)
 
         self.current_health = Health.ERROR
+
+    def waypointReachedCb(self, msg: Empty):
+        print("Waypoint reached.")
+        self.fsm.callPlantingAction()
+
+    def onDrivingStart(self):
+        print("Driving successfully started!")
+        self.go_to_waypoint_client.call(Trigger.Request())
 
     def publishCurrentState(self):
         print(self.fsm.state)

@@ -44,7 +44,7 @@ class WaypointManager(Node):
         self.goal_pose_pub = self.create_publisher(PoseStamped, "/goal_pose", 10)
 
         self.go_to_waypoint_service = self.create_service(
-            Trigger, "go_to_waypoint", self.goToWaypointCb
+            Trigger, "/planning/go_to_waypoint", self.goToWaypointCb
         )
 
         self.waypoint_reached_pub = self.create_publisher(

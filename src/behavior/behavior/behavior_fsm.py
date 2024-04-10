@@ -13,7 +13,9 @@ class StewardFSM(object):
         State("PLANTING", on_enter="callPlantingAction"),
     ]
 
-    def __init__(self):
+    def __init__(self, onDrivingStart):
+
+        self.onDrivingStart = onDrivingStart
 
         # What have we accomplished today?
         self.trees_planted = 0
@@ -46,6 +48,7 @@ class StewardFSM(object):
         print("Calling planting action")
 
     def callDrivingAction(self):
+        self.onDrivingStart()
         print("Calling driving action")
 
     @property
