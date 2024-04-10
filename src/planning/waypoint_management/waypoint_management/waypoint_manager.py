@@ -19,7 +19,7 @@ from builtin_interfaces.msg import Time as RosTime
 from geometry_msgs.msg import Point, PoseStamped, TransformStamped, Transform
 from nav_msgs.msg import OccupancyGrid
 from nav2_msgs.action import FollowWaypoints, NavigateToPose
-from std_msgs.msg import Header
+from std_msgs.msg import Header, Empty
 from std_srvs.srv import Trigger
 from steward_msgs.action import DriveToNextWaypoint
 from steward_msgs.msg import Route, ForestPlan
@@ -43,69 +43,34 @@ class WaypointManager(Node):
 
         self.goal_pose_pub = self.create_publisher(PoseStamped, "/goal_pose", 10)
 
-        self.start_service = self.create_service(
-            Trigger, "start_waypoint_manager", self.startServiceCb
+        self.go_to_waypoint_service = self.create_service(
+            Trigger, "go_to_waypoint", self.goToWaypointCb
         )
 
-        self.waypoint_action_server = ActionServer(
-            self,
-            DriveToNextWaypoint,
-            "/planning/drive_to_waypoint",
-            self.driveToWaypointCb,
+        self.waypoint_reached_pub = self.create_publisher(
+            Empty, "/events/waypoint_reached", 10
         )
-
-        self.is_started = False
 
         self.remaining_waypoints = []
 
-    def getActionResult(self, success: bool = False, message: str = ""):
-        result = DriveToNextWaypoint.Result()
-
-        result.num_remaining_waypoints = len(self.remaining_waypoints)
-
-        result.success = success
-        result.message = message
-        return result
-
-    def driveToWaypointCb(self, goal_handle: ServerGoalHandle):
-        if len(self.remaining_waypoints) < 1:
-            # No more waypoints
-            return self.getActionResult(False, "No more waypoints to drive to.")
+    def goToWaypointCb(self, req: Trigger.Request, resp: Trigger.Response):
 
         try:
             bl_to_map_tf = self.tf_buffer.lookup_transform(
                 "map", "base_link", rclpy.time.Time()
             )
         except TransformException as ex:
-            self.get_logger().info(
-                f"Could not find base_link->map transform. Skipping."
-            )
-            return self.getActionResult(
-                False, "Could not find base_link->map transform. Skipping."
-            )
+            self.get_logger().info(f"Could not transform map to base_link: {ex}")
+            resp.success = False
+            resp.message = f"Could not transform map to base_link: {ex}"
+            return resp
 
         self.goal_pose_pub.publish(self.getNextGoalPose(bl_to_map_tf))
-
-        dist_threshold = self.get_parameter("waypoint_distance_threshold").value
-
-        while True:
-            dist = self.distance(bl_to_map_tf.transform, self.remaining_waypoints[0])
-            # self.get_logger().info(f"Dist is: {dist}")
-
-            if dist < dist_threshold:
-                self.get_logger().info(f"Waypoint reached!")
-                self.remaining_waypoints.pop(0)
-                return self.getActionResult(True, "Waypoint reached.")
-
-            feedback = DriveToNextWaypoint.Feedback()
-            feedback.distance = dist
-            goal_handle.publish_feedback(feedback)
-            sleep(1)
-
-    def startServiceCb(self, req: Trigger.Request, response: Trigger.Response):
-        self.is_started = True
-        response.success = True
-        return response
+        resp.success = True
+        resp.message = (
+            f"Goal pose published, {len(self.remaining_waypoints)} waypoints remaining."
+        )
+        return resp
 
     # TODO: This REALLY needs to be made a service, not a subscription. WSH.
     def routeCb(self, msg: Route):
@@ -139,11 +104,17 @@ class WaypointManager(Node):
         # self.get_logger().info(f"Dist is: {dist}")
 
         if dist < dist_threshold:
-            self.get_logger().info(f"Waypoint reached!")
-            self.remaining_waypoints.pop(0)
+            self.onWaypointReached()
 
-        if self.is_started:
-            self.goal_pose_pub.publish(self.getNextGoalPose(bl_to_map_tf))
+        else:
+            self.get_logger().info(f"Dist is {dist}")
+
+    def onWaypointReached(self):
+
+        self.get_logger().info(f"Waypoint reached!")
+        self.remaining_waypoints.pop(0)
+        event_msg = Empty()
+        self.waypoint_reached_pub.publish(event_msg)
 
     def getNextGoalPose(self, tf: TransformStamped) -> PoseStamped:
         waypoint: Point = self.remaining_waypoints[0]
@@ -276,7 +247,7 @@ class WaypointManager(Node):
         waypoint_distance_threshold_param_desc.description = "Waypoints must be this close to the robot to be treated as reached. Meters."
         waypoint_distance_threshold_param_desc.type = ParameterType.PARAMETER_DOUBLE
         self.declare_parameter(
-            "waypoint_distance_threshold", 0.25, waypoint_distance_threshold_param_desc
+            "waypoint_distance_threshold", 1.25, waypoint_distance_threshold_param_desc
         )
 
         # TODO: Should waypoint headings even be considered? Or should they be treated as true points, not poses? WSH.

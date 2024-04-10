@@ -140,7 +140,7 @@ controller_server:
       movement_time_allowance: 100000.0
     goal_checker:
       plugin: "nav2_controller::SimpleGoalChecker"
-      xy_goal_tolerance: 0.25 # Must be this close to the goal
+      xy_goal_tolerance: 1.0 # Must be this close to the goal
       yaw_goal_tolerance: 6.28 # This means that we will tolerate ANY yaw at the goal
       stateful: True
 
