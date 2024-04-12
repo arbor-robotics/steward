@@ -55,12 +55,19 @@ class BehaviorFSM(Node):
         self.current_state_pub = self.create_publisher(
             StateMsg, "/behavior/current_state", 10
         )
+        self.plant_seedling_pub = self.create_publisher(
+            Empty, "/planning/plant_seedling", 10
+        )
         # SUBSCRIBERS
         self.create_subscription(
             DiagnosticArray, "/diagnostics_aggr", self.diagnosticCb, 10
         )
         self.create_subscription(
             Empty, "/events/waypoint_reached", self.waypointReachedCb, 10
+        )
+
+        self.create_subscription(
+            Empty, "/events/seedling_planted", self.seedlingPlantedCb, 10
         )
 
         # SERVICES
@@ -96,10 +103,10 @@ class BehaviorFSM(Node):
             trigger="start", source="PAUSED", dest="DRIVING", conditions=["is_healthy"]
         )
         self.machine.add_transition(
-            "onGoalReached", "DRIVING", "PLANTING", conditions=["is_healthy"]
+            "onWaypointReached", "DRIVING", "PLANTING", conditions=["is_healthy"]
         )
         self.machine.add_transition(
-            "onTreePlanted", "PLANTING", "DRIVING", conditions=["is_healthy"]
+            "onSeedlingPlanted", "PLANTING", "DRIVING", conditions=["is_healthy"]
         )
         self.machine.add_transition("onError", "*", "PAUSED")
         self.machine.add_transition("pause", "*", "PAUSED")
@@ -113,15 +120,22 @@ class BehaviorFSM(Node):
     def onEnterDriving(self):
         self.go_to_waypoint_pub.publish(Empty())
 
+    def seedlingPlantedCb(self, msg: Empty):
+        try:
+            self.trigger("onSeedlingPlanted")
+        except Exception as e:
+            self.get_logger().error(f"Unsupported transition: {e}")
+
     def onEnterPlanting(self):
         print("Planting a tree")
-        sleep(1)
-        self.trigger("onTreePlanted")
-        pass
+        self.plant_seedling_pub.publish(Empty())
 
     def waypointReachedCb(self, msg: Empty):
-        self.trigger("onGoalReached")
         print("Waypoint reached.")
+        try:
+            self.trigger("onWaypointReached")
+        except Exception as e:
+            self.get_logger().warning(f"{e}")
 
     def publishCurrentState(self):
         print(self.state)
