@@ -224,7 +224,15 @@ class RoutePlanner(Node):
 
     def forestPlanCb(self, forest_plan_msg: OccupancyGrid) -> None:
 
-        self.cached_plan_msg = forest_plan_msg
+        if (
+            self.cached_plan_msg is None
+            or forest_plan_msg.header.stamp.sec > self.cached_plan_msg.header.stamp.sec
+        ):
+            self.cached_plan_msg = forest_plan_msg
+            self.get_logger().info("Received new forest plan. Generating fresh route.")
+            self.generateRoute()
+        else:
+            self.get_logger().info("Received stale forest plan. Keeping old route.")
 
     def generateRoute(self):
 
@@ -248,17 +256,6 @@ class RoutePlanner(Node):
                 f"Could not find base_link->map transform. Skipping."
             )
             return
-
-        if self.last_time_plan_received >= self.rosTimeToSeconds(
-            forest_plan_msg.info.map_load_time
-        ):
-            self.get_logger().info("Skipping stale Forest Plan")
-            return
-        else:
-            self.get_logger().info("Received a new Forest Plan")
-            self.last_time_plan_received = self.rosTimeToSeconds(
-                forest_plan_msg.info.map_load_time
-            )
 
         # Convert list of ROS Point messages to np array
         planting_points = self.getPointsFromOccupancyGrid(forest_plan_msg)

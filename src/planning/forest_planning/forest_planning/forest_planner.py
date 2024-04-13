@@ -58,11 +58,6 @@ class RoutePlanner(Node):
         PLAN_PUBLISH_RATE = self.get_parameter("plan_publish_freq").value
         self.create_timer(1 / PLAN_PUBLISH_RATE, self.publishPlan)
 
-    def actionCb(self, goal_handle: ServerGoalHandle):
-        result = CreateForestPlan.Result()
-        goal_handle.canceled()
-        return result
-
     def publishPlan(self) -> None:
         if self.forest_plan is None:
             self.forest_plan = self.createForestPlan()
@@ -84,8 +79,15 @@ class RoutePlanner(Node):
 
     def plantingBoundsCb(self, msg: OccupancyGrid):
         # Immediately recompute the forest plan
-        self.forest_plan = self.createForestPlan()
+        if self.bounds_msg is not None and np.sum(msg.data) == np.sum(
+            self.bounds_msg.data
+        ):
+            return
+
         self.bounds_msg = msg
+
+        self.get_logger().info("Got new planting bounds.")
+        self.forest_plan = self.createForestPlan()
 
     def createForestPlan(
         self, target_seedling_count=10000, do_plotting=False
@@ -115,7 +117,7 @@ class RoutePlanner(Node):
         if bounds.shape[0] != bounds.shape[1]:
             self.get_logger().warning("Planting bounds map is not square.")
 
-        GRID_SIZE = bounds.shape[0]  # px
+        GRID_HEIGHT, GRID_WIDTH = bounds.shape  # px
 
         if do_plotting:
             fig, axs = plt.subplots(
@@ -137,24 +139,28 @@ class RoutePlanner(Node):
         rng = np.random.default_rng()
 
         MAX_ITERS = int(
-            GRID_SIZE**2 / 10
+            GRID_WIDTH**2 / 10
         )  # This is a heuristic. Algorithm asymptotically approaches max density.
         nearby_aborts = 0
 
         for i in trange(MAX_ITERS):
             # pick a random pixel
-            random_idx = rng.uniform(low=0, high=GRID_SIZE, size=2)
-            random_idx = np.floor(random_idx).astype(int)
+            random_row = np.floor(rng.uniform(low=0, high=GRID_HEIGHT)).astype(int)
+            random_col = np.floor(rng.uniform(low=0, high=GRID_WIDTH)).astype(int)
 
             # Check if within planting bounds
-            if bounds[random_idx[0], random_idx[1]] != BoundCell.PLANT_HERE:
+            # print(random_row, random_col)
+            print(bounds[random_row, random_col])
+            if bounds[random_row, random_col] != BoundCell.PLANT_HERE:
                 continue
 
             # Check if too close to another seedling.
             # Includes if it's right on top of an exisiting seedling.
             # https://scikit-image.org/docs/stable/api/skimage.draw.html#skimage.draw.disk
             nearby_cells = disk(
-                center=random_idx, radius=MINIMUM_SPACING_PX, shape=plan.shape
+                center=(random_row, random_col),
+                radius=MINIMUM_SPACING_PX,
+                shape=plan.shape,
             )
             seedling_nearby = np.sum(plan[nearby_cells]) > 0
 
@@ -162,7 +168,7 @@ class RoutePlanner(Node):
                 continue
 
             # Mark this cell as planted.
-            plan[random_idx[0], random_idx[1]] = 1
+            plan[random_row, random_col] = 1
 
             # Increment the seedling count
             current_seedling_count += 1

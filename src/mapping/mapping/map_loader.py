@@ -1089,7 +1089,7 @@ class MapLoader(Node):
 
 """
 
-        # self.bounds_img = self.processGeoJSON(String(data=json))
+        self.processGeoJSON(String(data=json))
 
         self.bounds_img = None
 
@@ -1110,6 +1110,8 @@ class MapLoader(Node):
         bounds_grid_msg.info.width = self.bounds_img.shape[1]
         bounds_grid_msg.info.resolution = self.get_parameter("resolution").value
         bounds_grid_msg.info.map_load_time = self.get_clock().now().to_msg()
+        bounds_grid_msg.info.origin.position.x = self.bounds_origin[0]
+        bounds_grid_msg.info.origin.position.y = self.bounds_origin[1]
         bounds_grid_msg: OccupancyGrid = deepcopy(bounds_grid_msg)
 
         bounds_grid_msg.data = self.bounds_img.astype(int).flatten().tolist()
@@ -1142,6 +1144,10 @@ class MapLoader(Node):
         # An array of points in ENU coordinates,
         # relative to lat0, lon0.
         point_arr = np.asarray(point_arr)
+        min_x = np.min(point_arr[:, 0])
+        min_y = np.min(point_arr[:, 1])
+        print(f"The origin is at ({min_x}, {min_y})")
+        self.bounds_origin = (min_x, min_y)
         # plt.scatter(point_arr[:, 0], point_arr[:, 1])
         # plt.show()
 
@@ -1167,6 +1173,9 @@ class MapLoader(Node):
         img = np.ones((height, width)) * 100  # 100 = "Don't plant here"
         rr, cc = ski.draw.polygon(point_arr[:, 1], point_arr[:, 0])
         img[rr, cc] = 0
+
+        # plt.imshow(img)
+        # plt.show()
 
         self.get_logger().info(f"Calculated bounds of shape {img.shape}")
 
