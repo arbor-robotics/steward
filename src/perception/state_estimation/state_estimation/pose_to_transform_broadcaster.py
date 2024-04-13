@@ -3,6 +3,7 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 
 from geometry_msgs.msg import PoseWithCovarianceStamped, TransformStamped
+from nav_msgs.msg import Odometry
 from tf2_ros import TransformBroadcaster
 
 
@@ -23,9 +24,34 @@ class PoseToTransformBroadcaster(Node):
         self.tf_broadcaster = TransformBroadcaster(self)
 
         # TODO: Parameterize topic name
-        self.pose_subscription = self.create_subscription(
-            PoseWithCovarianceStamped, "/gnss/pose", self.poseCb, sensor_qos_profile
+        # self.pose_subscription = self.create_subscription(
+        #     PoseWithCovarianceStamped, "/gnss/pose", self.poseCb, sensor_qos_profile
+        # )
+
+        self.odom_sub = self.create_subscription(
+            Odometry, "/odom", self.odomCb, sensor_qos_profile
         )
+
+    def odomCb(self, msg: Odometry):
+        t = TransformStamped()
+
+        # t.header = msg.header
+        # t.child_frame_id = "base_link"  # TODO: Change to 'gnss'
+        # t.transform.translation.x = msg.pose.pose.position.x
+        # t.transform.translation.y = msg.pose.pose.position.y
+        # t.transform.translation.z = msg.pose.pose.position.z
+        # t.transform.rotation = msg.pose.pose.orientation
+
+        # self.tf_broadcaster.sendTransform(t)
+
+        t.header = msg.header
+        t.child_frame_id = "odom"  # TODO: Change to 'gnss'
+        t.transform.translation.x = msg.pose.pose.position.x
+        t.transform.translation.y = msg.pose.pose.position.y
+        t.transform.translation.z = msg.pose.pose.position.z
+        t.transform.rotation = msg.pose.pose.orientation
+
+        self.tf_broadcaster.sendTransform(t)
 
     def poseCb(self, msg: PoseWithCovarianceStamped):
         t = TransformStamped()

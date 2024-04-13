@@ -58,10 +58,6 @@ class RoutePlanner(Node):
         PLAN_PUBLISH_RATE = self.get_parameter("plan_publish_freq").value
         self.create_timer(1 / PLAN_PUBLISH_RATE, self.publishPlan)
 
-        self.action_server = ActionServer(
-            self, CreateForestPlan, "create_forest_plan", self.actionCb
-        )
-
     def actionCb(self, goal_handle: ServerGoalHandle):
         result = CreateForestPlan.Result()
         goal_handle.canceled()
@@ -87,6 +83,8 @@ class RoutePlanner(Node):
         self.heightmap = msg
 
     def plantingBoundsCb(self, msg: OccupancyGrid):
+        # Immediately recompute the forest plan
+        self.forest_plan = self.createForestPlan()
         self.bounds_msg = msg
 
     def createForestPlan(
