@@ -19,7 +19,7 @@ import xacro
 
 def generate_launch_description():
 
-    MAP_NAME = "demoland"
+    MAP_NAME = "flagstaff"
 
     # TODO: Is there a more elegant way to do this?
     # Currently we assume that this launch file is at the root of the workspace
@@ -118,8 +118,11 @@ def generate_launch_description():
 
     health_monitor = Node(package="diagnostics", executable="health_monitor")
 
+    behavior_fsm = Node(package="behavior", executable="behavior_fsm_node")
+
     return LaunchDescription(
         [
+            behavior_fsm,
             camera_processor,
             forest_planner,
             health_monitor,

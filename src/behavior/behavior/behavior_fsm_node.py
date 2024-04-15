@@ -138,7 +138,7 @@ class BehaviorFSM(Node):
             self.get_logger().warning(f"{e}")
 
     def publishCurrentState(self):
-        print(self.state)
+        # print(self.state)
         state_msg = StateMsg(value=STRING_TO_STATE[self.state])
         self.current_state_pub.publish(state_msg)
 
@@ -152,7 +152,6 @@ class BehaviorFSM(Node):
             if request.transition == Transition.PLAY:
                 response.success = self.trigger("start")
 
-                print(f"IS HEALTH? {self.is_healthy}")
                 if response.success:
                     response.description = f"State is now {self.state}"
                 else:
@@ -204,13 +203,13 @@ class BehaviorFSM(Node):
                 continue
 
             if level == Health.OK:
-                print("OK")
+                # print("OK")
                 self.current_health = Health.OK
             elif level == Health.WARN:
-                print("WARN")
+                # print("WARN")
                 self.current_health = Health.WARN
             elif level == Health.ERROR:
-                print("ERROR")
+                # print("ERROR")
                 if self.current_health != Health.ERROR:
                     # We've just transitioned to an error state.
                     # Inform the FSM.

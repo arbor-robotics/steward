@@ -1,0 +1,8 @@
+image: map.pgm
+
+# We basically just want to create a huge, zero-cost area.
+resolution: 1.0
+origin: [-500.000000, -500.000000, 0.000000]
+negate: 0
+occupied_thresh: 0.95
+free_thresh: 0.196

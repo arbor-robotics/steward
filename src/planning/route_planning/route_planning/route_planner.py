@@ -231,8 +231,6 @@ class RoutePlanner(Node):
             self.cached_plan_msg = forest_plan_msg
             self.get_logger().info("Received new forest plan. Generating fresh route.")
             self.generateRoute()
-        else:
-            self.get_logger().info("Received stale forest plan. Keeping old route.")
 
     def generateRoute(self):
 
