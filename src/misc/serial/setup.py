@@ -1,6 +1,6 @@
 from setuptools import find_packages, setup
 
-package_name = "forest_planning"
+package_name = "serial"
 
 setup(
     name=package_name,
@@ -18,9 +18,6 @@ setup(
     license="TODO: License declaration",  # See package.xml
     tests_require=["pytest"],
     entry_points={
-        "console_scripts": [
-            "forest_planner = forest_planning.forest_planner:main",
-            "planting_journal = forest_planning.planting_journal:main",
-        ],
+        "console_scripts": ["serial_bridge = serial.serial_bridge:main"],
     },
 )

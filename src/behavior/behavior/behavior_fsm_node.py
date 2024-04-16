@@ -142,6 +142,10 @@ class BehaviorFSM(Node):
         state_msg = StateMsg(value=STRING_TO_STATE[self.state])
         self.current_state_pub.publish(state_msg)
 
+        if self.state == "DRIVING":
+            self.get_logger().info("Publishing Go To Waypoint trigger")
+            self.go_to_waypoint_pub.publish(Empty())
+
     def transitionRequestCb(
         self, request: RequestTransition.Request, response: RequestTransition.Response
     ) -> RequestTransition.Response:
@@ -188,7 +192,7 @@ class BehaviorFSM(Node):
         self.diagnostic_pub.publish(status_array)
 
     def diagnosticCb(self, msg: DiagnosticArray):
-        """Extract the gobal status level from the aggregated diagnostic array.
+        """Extract the global status level from the aggregated diagnostic array.
 
         Args:
             msg (DiagnosticArray): The aggregated global diagnostic array.

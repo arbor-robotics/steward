@@ -62,6 +62,7 @@ class WaypointManager(Node):
         except TransformException as ex:
             self.get_logger().info(f"Could not transform map to base_link: {ex}")
 
+        self.get_logger().info("Going to next pose")
         self.goal_pose_pub.publish(self.getNextGoalPose(bl_to_map_tf))
 
     # TODO: This REALLY needs to be made a service, not a subscription. WSH.

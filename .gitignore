@@ -7,3 +7,4 @@ __pycache__/
 .jekyll-cache/
 *.pyc
 my_state_diagram.png
+env/
