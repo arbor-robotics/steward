@@ -39,8 +39,9 @@ class PlantingJournal(Node):
 
         self.bounds_msg = None
 
-        self.num_seedlings = None
+        self.num_seedlings_in_plan = 9999
         self.planted_points = []
+        self.stamps = []
         self.progress = 0  # 0 to 1
 
         # https://docs.ros.org/en/humble/Concepts/Intermediate/About-Quality-of-Service-Settings.html
@@ -53,16 +54,37 @@ class PlantingJournal(Node):
 
         # TODO: Create proper QoS profile.
         self.journal_pub = self.create_publisher(
-            Marker, "/planning/forest_plan", map_qos
+            Marker, "/planning/planted_points", map_qos
         )
 
         self.progress_pub = self.create_publisher(Float32, "/planning/progress", 10)
+        self.eta_pub = self.create_publisher(Float32, "/planning/eta", 10)
+        self.num_planted_seedlings_pub = self.create_publisher(
+            Float32, "/planning/num_planted_seedlings", 10
+        )
 
         MARKER_PUBLISH_RATE = 0.5  # Hz. TODO: Parameterize. WSH.
         self.create_timer(1 / MARKER_PUBLISH_RATE, self.publishJournalMarker)
 
+    @property
+    def num_remaining_seedlings(self):
+        return self.num_seedlings_in_plan - len(self.planted_points)
+
     def forestPlanCb(self, msg: Marker):
-        self.num_seedlings = len(msg.points)
+        self.num_seedlings_in_plan = len(msg.points)
+
+    def calculateSeedlingsPerMinute(self) -> float:
+
+        if len(self.stamps) < 2:
+            return 0
+
+        return 60 / np.mean(np.diff(self.stamps))
+
+    def estimateTotalPlantingTimeSecs(self) -> float:
+        return self.calculateSeedlingsPerMinute() * self.num_seedlings_in_plan
+
+    def estimateRemaingPlantingTimeSecs(self) -> float:
+        return float(self.calculateSeedlingsPerMinute() * self.num_remaining_seedlings)
 
     def recordPlantedSeedling(self, msg: Empty):
         try:
@@ -73,14 +95,23 @@ class PlantingJournal(Node):
 
         seedling_pt = [t.transform.translation.x, t.transform.translation.y]
         self.planted_points.append(seedling_pt)
-        if self.num_seedlings is not None:
-            self.progress = len(self.planted_points) / self.num_seedlings
+        self.stamps.append(time())
+        if self.num_seedlings_in_plan is not None:
+            self.progress = len(self.planted_points) / self.num_seedlings_in_plan
             progress_msg = Float32()
             progress_msg.data = self.progress
             self.progress_pub.publish(progress_msg)
 
+            eta_msg = Float32(data=self.estimateRemaingPlantingTimeSecs())
+            self.eta_pub.publish(eta_msg)
+
+            num_planted_seedlings_msg = Float32(data=float(len(self.planted_points)))
+            self.num_planted_seedlings_pub.publish(num_planted_seedlings_msg)
+
+        estimate_minutes = self.estimateTotalPlantingTimeSecs() / 60
+
         self.get_logger().info(
-            f"Recorded planted seedling in the journal. Journal now has {len(self.planted_points)} entries. Progress is {self.progress}"
+            f"Recorded planted seedling in the journal. Journal now has {len(self.planted_points)} entries. Progress is {self.progress}. SPM is {int(self.calculateSeedlingsPerMinute())}. Total estimate is {estimate_minutes} min. Remaining is {int(self.estimateRemaingPlantingTimeSecs() / 60)} min"
         )
 
     def publishJournalMarker(self):
