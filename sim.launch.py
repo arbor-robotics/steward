@@ -105,6 +105,8 @@ def generate_launch_description():
         package="waypoint_management", executable="waypoint_manager"
     )
 
+    journal = Node(package="forest_planning", executable="planting_journal")
+
     # See: https://github.com/RobotWebTools/rosbridge_suite/blob/ros2/rosbridge_server/launch/rosbridge_websocket_launch.xml
     webbridge = IncludeLaunchDescription(
         AnyLaunchDescriptionSource(
@@ -127,6 +129,7 @@ def generate_launch_description():
             forest_planner,
             health_monitor,
             joint_state_publisher,
+            journal,
             map_loader,
             odom_bl,
             # mvp_controller,
