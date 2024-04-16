@@ -67,7 +67,9 @@ class WaypointManager(Node):
 
     # TODO: This REALLY needs to be made a service, not a subscription. WSH.
     def routeCb(self, msg: Route):
-        if self.cached_route is None:
+        if self.cached_route is None or len(self.cached_route.points) != len(
+            msg.points
+        ):
             self.cached_route = msg
             self.remaining_waypoints = msg.points
 
