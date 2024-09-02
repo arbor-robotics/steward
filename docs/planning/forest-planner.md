@@ -1,6 +1,8 @@
 ---
 layout: default
 title: Forest Planner
+parent: Planning
+nav_order: 2
 ---
 
 # Forest Planner
