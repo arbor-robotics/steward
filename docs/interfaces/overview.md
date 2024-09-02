@@ -1,5 +1,5 @@
 ---
-title: Sensing
+title: Interfaces
 layout: default
 ---
 
