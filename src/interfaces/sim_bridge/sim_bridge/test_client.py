@@ -2,30 +2,39 @@
 
 import asyncio
 from websockets.sync.client import connect
-
-import cv2
-import numpy as np
+import PIL.Image as Image
+import io
 from matplotlib import pyplot as plt
+from matplotlib import image as mpimg
+from time import time
+from tqdm import trange
 
 
-def hello():
+def hello(data="Hello, world"):
+    with connect("ws://localhost:8765") as websocket:
 
-    image: np.ndarray = cv2.imread("data/arbor-logo.png")
+        avg_hz = 0
+        for i in trange(100):
+            start = time()
+            websocket.send(data)
+            message = websocket.recv()
+            # print(f"Received: {message}")
+            delay = time() - start
+            print(f"Took {delay} secs ({1/delay} Hz)")
+            avg_hz += 1 / delay
 
-    print(image.shape)
-    original_shape = image.shape
-    image = image.tobytes()
+        print(f"Avg({avg_hz/100} Hz)")
 
-    with connect("ws://localhost:8787") as websocket:
-        websocket.send(image)
-        message = websocket.recv()
-        # print(f"Received: {message}")
-
-        received_image = np.frombuffer(message, dtype=np.uint8).reshape(original_shape)
-        print(received_image)
-        plt.imshow(received_image)
+        plt.imshow(mpimg.imread(io.BytesIO(message)))
         plt.show()
 
 
 def main():
-    hello()
+
+    pil_im = Image.open("data/arbor-logo.png")
+    b = io.BytesIO()
+    pil_im.save(b, "png")
+    im_bytes = b.getvalue()
+
+    # print(im_bytes)
+    hello(im_bytes)
