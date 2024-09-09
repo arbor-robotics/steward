@@ -10,6 +10,19 @@ from time import time
 from tqdm import trange
 
 
+class MessageType:
+    IMAGE = 0x00
+    SUBSCRIBE = 0x01
+    TELEOP = 0x02
+
+
+def formSubscribeOp(message_type: MessageType, topic_id=0):
+    # First byte is "subscribe to", second byte is type
+    # third byte is in case there is more than one source
+    # for this type (e.g. multiple cameras)
+    return bytes([MessageType.SUBSCRIBE, message_type, topic_id])
+
+
 def hello(data="Hello, world"):
     with connect("ws://localhost:8765") as websocket:
 
@@ -25,8 +38,23 @@ def hello(data="Hello, world"):
 
         print(f"Avg({avg_hz/100} Hz)")
 
-        plt.imshow(mpimg.imread(io.BytesIO(message)))
+        plt.imshow(mpimg.imread(io.BytesIO(message[1:])))
         plt.show()
+
+
+def requestTeleop():
+    with connect("ws://localhost:8765") as websocket:
+        sub_request = formSubscribeOp(MessageType.TELEOP)
+        websocket.send(sub_request)
+
+        while True:
+            message = websocket.recv()
+            print(message)
+
+        # print(f"Avg({avg_hz/100} Hz)")
+
+        # plt.imshow(mpimg.imread(io.BytesIO(message[1:])))
+        # plt.show()
 
 
 def main():
@@ -36,5 +64,8 @@ def main():
     pil_im.save(b, "png")
     im_bytes = b.getvalue()
 
+    message_type = MessageType.IMAGE
+
     # print(im_bytes)
-    hello(im_bytes)
+    # hello(bytes([message_type]) + im_bytes)
+    requestTeleop()

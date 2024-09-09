@@ -7,11 +7,21 @@ import io
 import rclpy
 from rclpy.node import Node, ParameterDescriptor, ParameterType
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
-from sensor_msgs.msg import Image
 import numpy as np
 from cv_bridge import CvBridge
 from PIL import Image as PILImage
 import cv2
+from random import randbytes
+
+# ROS message types
+from geometry_msgs.msg import Twist
+from sensor_msgs.msg import Image
+
+
+class MessageType:
+    IMAGE = 0x00
+    SUBSCRIBE = 0x01
+    TELEOP = 0x02
 
 
 class WebsocketBridge(Node):
@@ -23,18 +33,33 @@ class WebsocketBridge(Node):
         self.setUpParameters()
 
         # TODO: Create proper QoS profile.
-        self.imagePub = self.create_publisher(Image, "/rgb/image_rect_color", 10)
+        self.image_pub = self.create_publisher(Image, "/rgb/image_rect_color", 10)
+
+        self.cmd_vel_sub = self.create_subscription(
+            Twist, "/cmd_vel", self.cmdVelCb, 10
+        )
 
         # CONTROLLER_FREQ = 100  # Hz
         self.create_timer(0.1, self.publishHeartbeat)
-        # self.create_timer(0.01, self.checkMessages)
+        self.create_timer(0.1, self.sendWsTwist)
+        self.twist_connection: ServerConnection = None
 
-        # server = serve(self.handleConnection, "localhost", 8765)
-        # server.server.get_loop().run_until_complete()
+    async def sendWsTwist(self):
+        if self.twist_connection is None:
+            return
 
-        # asyncio.create_task(self.runServer)
+        await self.twist_connection.send(randbytes(2))
+
+    def cmdVelCb(self, msg: Twist):
+        """Send the Twist message to the Websocket server
+
+        Args:
+            msg (Twist): _description_
+        """
+        pass
 
     def publishHeartbeat(self):
+        """This is where a "heartbeat" or more detailed diagnostics should be published."""
         # self.get_logger().info("I'm still alive!")
         pass
 
@@ -52,62 +77,20 @@ class WebsocketBridge(Node):
 
         img_np = cv2.flip(img_np, 0)
         # img_np = cv2.cvtColor(img_np, cv2.COLOR_BGR2RGB)
-        msg = self.bridge.cv2_to_imgmsg(img_np, "rgb8")
+
+        if img_np.shape[-1] == 4:
+            msg = self.bridge.cv2_to_imgmsg(img_np, "rgba8")
+        else:
+            msg = self.bridge.cv2_to_imgmsg(img_np, "rgb8")
 
         # bytes_arr = mpimg.imread()
         # plt.imshow(bytes_arr)
         # self.get_logger().info(str(bytes_arr))
-        # msg: Image = self.numpy_to_image(bytes_arr)
-        self.imagePub.publish(msg)
+        self.image_pub.publish(msg)
         # plt.show()
 
-    def numpy_to_image(self, arr, encoding="rgba8"):
-        # if not encoding in name_to_dtypes:
-        #     raise TypeError('Unrecognized encoding {}'.format(encoding))
-
-        im = Image(encoding=encoding)
-
-        # extract width, height, and channels
-        # dtype_class, exp_channels = name_to_dtypes[encoding]
-        dtype_class, exp_channels = (np.uint8, 4)
-        dtype = np.dtype(dtype_class)
-        if len(arr.shape) == 2:
-            im.height, im.width, channels = arr.shape + (1,)
-        elif len(arr.shape) == 3:
-            im.height, im.width, channels = arr.shape
-        else:
-            raise TypeError("Array must be two or three dimensional")
-
-        # check type and channels
-        if exp_channels != channels:
-            raise TypeError(
-                "Array has {} channels, {} requires {}".format(
-                    channels, encoding, exp_channels
-                )
-            )
-        if dtype_class != arr.dtype.type:
-            raise TypeError(
-                "Array is {}, {} requires {}".format(
-                    arr.dtype.type, encoding, dtype_class
-                )
-            )
-
-        # make the array contiguous in memory, as mostly required by the format
-        contig = np.ascontiguousarray(arr)
-        im.data = contig.tostring()
-        im.step = contig.strides[0]
-        im.is_bigendian = (
-            arr.dtype.byteorder == ">"
-            or arr.dtype.byteorder == "="
-            and sys.byteorder == "big"
-        )
-
-        return im
-
-    # async def runServer(self):
-
     def setUpParameters(self):
-        """Not used."""
+        """Not used. Declare ROS params here."""
         pass
 
 
@@ -121,23 +104,46 @@ rclpy.init()
 node = WebsocketBridge()
 
 
-async def echo(websocket):
+async def echo(websocket: ServerConnection):
     async for message in websocket:
-        node.publishImageBytes(message)
+        # Check the first byte, which is the message type
+        # message.
+        if type(message) != bytes:
+            raise NotImplementedError
+
+        message: bytes
+
+        # Check the message type
+        if message[0] == MessageType.IMAGE:
+            print("Got image")
+            node.publishImageBytes(message[1:])
+
+        elif message[0] == MessageType.SUBSCRIBE:
+            # while True:
+            #     await websocket.send(randbytes(2))
+            #     await asyncio.sleep(0.01)
+
+            node.twist_connection = websocket
+
+        # message.
         await websocket.send(message)
 
 
-async def serverMain():
+async def spinWebsocketServer():
     async with serve(echo, "localhost", 8765):
         await asyncio.get_running_loop().create_future()  # run forever
 
 
-async def ros_loop():
+async def spinRos(freq=1e4):
     while rclpy.ok():
+        # Manually spin the ROS node at a rate of 1e4 Hz.
         rclpy.spin_once(node, timeout_sec=0)
-        await asyncio.sleep(1e-5)
+        await asyncio.sleep(1 / freq)
 
 
 def main():
-    future = asyncio.wait([ros_loop(), serverMain()])
+    # Run both the ROS loop and the Websocket server loop
+    future = asyncio.wait([spinRos(), spinWebsocketServer()])
+
+    # Spin until both loops complete or are cancelled
     asyncio.get_event_loop().run_until_complete(future)
