@@ -11,6 +11,7 @@ from sensor_msgs.msg import Image
 import numpy as np
 from cv_bridge import CvBridge
 from PIL import Image as PILImage
+import cv2
 
 
 class WebsocketBridge(Node):
@@ -41,10 +42,17 @@ class WebsocketBridge(Node):
         async for message in websocket:
             await websocket.send(message)
 
-    def publishImageBytes(self, bytes):
-        bytes_arr = np.array(PILImage.open(io.BytesIO(bytes)))
+    def publishImageBytes(self, img_str):
+        # print(img_str)
+        # nparr = np.fromstring(img_str, np.uint8)
+        # img_np = cv2.imdecode(nparr, cv2.IMREAD_COLOR)  # cv2.IMREAD_COLOR in OpenCV 3.1
+        img_np = np.array(PILImage.open(io.BytesIO(img_str)))
 
-        msg = self.bridge.cv2_to_imgmsg(bytes_arr, "rgba8")
+        # bytes_arr = np.array(cv2.imdecode(io.BytesIO(bytes)))
+
+        img_np = cv2.flip(img_np, 0)
+        # img_np = cv2.cvtColor(img_np, cv2.COLOR_BGR2RGB)
+        msg = self.bridge.cv2_to_imgmsg(img_np, "rgb8")
 
         # bytes_arr = mpimg.imread()
         # plt.imshow(bytes_arr)
