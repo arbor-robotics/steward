@@ -62,5 +62,3 @@ ekf_localization:
   odom_frame: odom
   base_link_frame: base_link
   world_frame: odom
-
-  two_d_mode: true
