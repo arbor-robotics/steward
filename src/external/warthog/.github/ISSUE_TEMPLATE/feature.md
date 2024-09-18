@@ -8,7 +8,7 @@ assignees: tonybaltovski
 ---
 
 **Describe the the feature you would like**
-A clear and concise description of what you want to happen. 
+A clear and concise description of what you want to happen.
 
 **Other notes**
 Add anything else you thing is important.

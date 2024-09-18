@@ -267,31 +267,31 @@ inline const std::string& Person::_internal_name() const {
   return name_.Get();
 }
 inline void Person::_internal_set_name(const std::string& value) {
-  
+
   name_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), value, GetArena());
 }
 inline void Person::set_name(std::string&& value) {
-  
+
   name_.Set(
     &::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), ::std::move(value), GetArena());
   // @@protoc_insertion_point(field_set_rvalue:Person.name)
 }
 inline void Person::set_name(const char* value) {
   GOOGLE_DCHECK(value != nullptr);
-  
+
   name_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), ::std::string(value),
               GetArena());
   // @@protoc_insertion_point(field_set_char:Person.name)
 }
 inline void Person::set_name(const char* value,
     size_t size) {
-  
+
   name_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), ::std::string(
       reinterpret_cast<const char*>(value), size), GetArena());
   // @@protoc_insertion_point(field_set_pointer:Person.name)
 }
 inline std::string* Person::_internal_mutable_name() {
-  
+
   return name_.Mutable(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArena());
 }
 inline std::string* Person::release_name() {
@@ -300,9 +300,9 @@ inline std::string* Person::release_name() {
 }
 inline void Person::set_allocated_name(std::string* name) {
   if (name != nullptr) {
-    
+
   } else {
-    
+
   }
   name_.SetAllocated(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), name,
       GetArena());
@@ -311,7 +311,7 @@ inline void Person::set_allocated_name(std::string* name) {
 inline std::string* Person::unsafe_arena_release_name() {
   // @@protoc_insertion_point(field_unsafe_arena_release:Person.name)
   GOOGLE_DCHECK(GetArena() != nullptr);
-  
+
   return name_.UnsafeArenaRelease(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
       GetArena());
 }
@@ -319,9 +319,9 @@ inline void Person::unsafe_arena_set_allocated_name(
     std::string* name) {
   GOOGLE_DCHECK(GetArena() != nullptr);
   if (name != nullptr) {
-    
+
   } else {
-    
+
   }
   name_.UnsafeArenaSetAllocated(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
       name, GetArena());
@@ -340,7 +340,7 @@ inline ::PROTOBUF_NAMESPACE_ID::int32 Person::id() const {
   return _internal_id();
 }
 inline void Person::_internal_set_id(::PROTOBUF_NAMESPACE_ID::int32 value) {
-  
+
   id_ = value;
 }
 inline void Person::set_id(::PROTOBUF_NAMESPACE_ID::int32 value) {
@@ -360,7 +360,7 @@ inline bool Person::has_ponycopter() const {
   return _internal_has_ponycopter();
 }
 inline void Person::_internal_set_has_ponycopter(bool value) {
-  
+
   has_ponycopter_ = value;
 }
 inline void Person::set_has_ponycopter(bool value) {

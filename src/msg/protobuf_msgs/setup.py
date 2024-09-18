@@ -18,8 +18,6 @@ setup(
     license="TODO: License declaration",  # See package.xml
     tests_require=["pytest"],
     entry_points={
-        "console_scripts": [
-
-        ],
+        "console_scripts": [],
     },
 )

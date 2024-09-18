@@ -5,7 +5,7 @@ layout: default
 
 ```mermaid
 flowchart TD
-    
+
     A(Warthog Rosbridge Server) -->|Warthog Diagnostics| B(Steward OS)
     B -->|Movement Commands| A
     B --> |Diagnostics & Sensor Data|C(Canopy Rosbridge Client)
@@ -33,5 +33,3 @@ The Warthog hosts a Rosbridge server, which Steward OS connects to as a client.
 Steward OS hosts its own Rosbridge server, which Canopy connects to as a client.
 
 Steward OS combines its client (for connecting to the Warthog) and its server (for connecting to Canopy) in its `web_bridge` package.
-
-

@@ -343,9 +343,9 @@ inline void Image::unsafe_arena_set_allocated_header(
   }
   header_ = header;
   if (header) {
-    
+
   } else {
-    
+
   }
   // @@protoc_insertion_point(field_unsafe_arena_set_allocated:steward.Image.header)
 }
@@ -358,13 +358,13 @@ inline ::steward::Header* Image::release_header() {
 }
 inline ::steward::Header* Image::unsafe_arena_release_header() {
   // @@protoc_insertion_point(field_release:steward.Image.header)
-  
+
   ::steward::Header* temp = header_;
   header_ = nullptr;
   return temp;
 }
 inline ::steward::Header* Image::_internal_mutable_header() {
-  
+
   if (header_ == nullptr) {
     auto* p = CreateMaybeMessage<::steward::Header>(GetArena());
     header_ = p;
@@ -387,9 +387,9 @@ inline void Image::set_allocated_header(::steward::Header* header) {
       header = ::PROTOBUF_NAMESPACE_ID::internal::GetOwnedMessage(
           message_arena, header, submessage_arena);
     }
-    
+
   } else {
-    
+
   }
   header_ = header;
   // @@protoc_insertion_point(field_set_allocated:steward.Image.header)
@@ -407,7 +407,7 @@ inline ::PROTOBUF_NAMESPACE_ID::uint32 Image::height() const {
   return _internal_height();
 }
 inline void Image::_internal_set_height(::PROTOBUF_NAMESPACE_ID::uint32 value) {
-  
+
   height_ = value;
 }
 inline void Image::set_height(::PROTOBUF_NAMESPACE_ID::uint32 value) {
@@ -427,7 +427,7 @@ inline ::PROTOBUF_NAMESPACE_ID::uint32 Image::width() const {
   return _internal_width();
 }
 inline void Image::_internal_set_width(::PROTOBUF_NAMESPACE_ID::uint32 value) {
-  
+
   width_ = value;
 }
 inline void Image::set_width(::PROTOBUF_NAMESPACE_ID::uint32 value) {
@@ -455,31 +455,31 @@ inline const std::string& Image::_internal_encoding() const {
   return encoding_.Get();
 }
 inline void Image::_internal_set_encoding(const std::string& value) {
-  
+
   encoding_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), value, GetArena());
 }
 inline void Image::set_encoding(std::string&& value) {
-  
+
   encoding_.Set(
     &::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), ::std::move(value), GetArena());
   // @@protoc_insertion_point(field_set_rvalue:steward.Image.encoding)
 }
 inline void Image::set_encoding(const char* value) {
   GOOGLE_DCHECK(value != nullptr);
-  
+
   encoding_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), ::std::string(value),
               GetArena());
   // @@protoc_insertion_point(field_set_char:steward.Image.encoding)
 }
 inline void Image::set_encoding(const char* value,
     size_t size) {
-  
+
   encoding_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), ::std::string(
       reinterpret_cast<const char*>(value), size), GetArena());
   // @@protoc_insertion_point(field_set_pointer:steward.Image.encoding)
 }
 inline std::string* Image::_internal_mutable_encoding() {
-  
+
   return encoding_.Mutable(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArena());
 }
 inline std::string* Image::release_encoding() {
@@ -488,9 +488,9 @@ inline std::string* Image::release_encoding() {
 }
 inline void Image::set_allocated_encoding(std::string* encoding) {
   if (encoding != nullptr) {
-    
+
   } else {
-    
+
   }
   encoding_.SetAllocated(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), encoding,
       GetArena());
@@ -499,7 +499,7 @@ inline void Image::set_allocated_encoding(std::string* encoding) {
 inline std::string* Image::unsafe_arena_release_encoding() {
   // @@protoc_insertion_point(field_unsafe_arena_release:steward.Image.encoding)
   GOOGLE_DCHECK(GetArena() != nullptr);
-  
+
   return encoding_.UnsafeArenaRelease(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
       GetArena());
 }
@@ -507,9 +507,9 @@ inline void Image::unsafe_arena_set_allocated_encoding(
     std::string* encoding) {
   GOOGLE_DCHECK(GetArena() != nullptr);
   if (encoding != nullptr) {
-    
+
   } else {
-    
+
   }
   encoding_.UnsafeArenaSetAllocated(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
       encoding, GetArena());
@@ -528,7 +528,7 @@ inline bool Image::is_bigendian() const {
   return _internal_is_bigendian();
 }
 inline void Image::_internal_set_is_bigendian(bool value) {
-  
+
   is_bigendian_ = value;
 }
 inline void Image::set_is_bigendian(bool value) {
@@ -548,7 +548,7 @@ inline ::PROTOBUF_NAMESPACE_ID::uint32 Image::step() const {
   return _internal_step();
 }
 inline void Image::_internal_set_step(::PROTOBUF_NAMESPACE_ID::uint32 value) {
-  
+
   step_ = value;
 }
 inline void Image::set_step(::PROTOBUF_NAMESPACE_ID::uint32 value) {
@@ -576,31 +576,31 @@ inline const std::string& Image::_internal_data() const {
   return data_.Get();
 }
 inline void Image::_internal_set_data(const std::string& value) {
-  
+
   data_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), value, GetArena());
 }
 inline void Image::set_data(std::string&& value) {
-  
+
   data_.Set(
     &::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), ::std::move(value), GetArena());
   // @@protoc_insertion_point(field_set_rvalue:steward.Image.data)
 }
 inline void Image::set_data(const char* value) {
   GOOGLE_DCHECK(value != nullptr);
-  
+
   data_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), ::std::string(value),
               GetArena());
   // @@protoc_insertion_point(field_set_char:steward.Image.data)
 }
 inline void Image::set_data(const void* value,
     size_t size) {
-  
+
   data_.Set(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), ::std::string(
       reinterpret_cast<const char*>(value), size), GetArena());
   // @@protoc_insertion_point(field_set_pointer:steward.Image.data)
 }
 inline std::string* Image::_internal_mutable_data() {
-  
+
   return data_.Mutable(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), GetArena());
 }
 inline std::string* Image::release_data() {
@@ -609,9 +609,9 @@ inline std::string* Image::release_data() {
 }
 inline void Image::set_allocated_data(std::string* data) {
   if (data != nullptr) {
-    
+
   } else {
-    
+
   }
   data_.SetAllocated(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(), data,
       GetArena());
@@ -620,7 +620,7 @@ inline void Image::set_allocated_data(std::string* data) {
 inline std::string* Image::unsafe_arena_release_data() {
   // @@protoc_insertion_point(field_unsafe_arena_release:steward.Image.data)
   GOOGLE_DCHECK(GetArena() != nullptr);
-  
+
   return data_.UnsafeArenaRelease(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
       GetArena());
 }
@@ -628,9 +628,9 @@ inline void Image::unsafe_arena_set_allocated_data(
     std::string* data) {
   GOOGLE_DCHECK(GetArena() != nullptr);
   if (data != nullptr) {
-    
+
   } else {
-    
+
   }
   data_.UnsafeArenaSetAllocated(&::PROTOBUF_NAMESPACE_ID::internal::GetEmptyStringAlreadyInited(),
       data, GetArena());

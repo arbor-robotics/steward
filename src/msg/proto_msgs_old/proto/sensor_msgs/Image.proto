@@ -4,7 +4,7 @@ import "std_msgs/Header.proto";
 // import "google/protobuf/boolean.proto";
 
 
-package steward;   
+package steward;
 
 service ImageService {
     rpc sendImage(Image) returns (VoidNoParam);
