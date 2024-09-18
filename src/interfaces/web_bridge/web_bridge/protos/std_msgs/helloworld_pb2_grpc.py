@@ -3,7 +3,7 @@
 import grpc
 import warnings
 
-from sim_bridge.protos.std_msgs import helloworld_pb2 as std__msgs_dot_helloworld__pb2
+from web_bridge.protos.std_msgs import helloworld_pb2 as std__msgs_dot_helloworld__pb2
 
 GRPC_GENERATED_VERSION = "1.66.1"
 GRPC_VERSION = grpc.__version__

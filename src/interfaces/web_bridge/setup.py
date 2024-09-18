@@ -1,6 +1,6 @@
 from setuptools import find_packages, setup
 
-package_name = "sim_bridge"
+package_name = "web_bridge"
 
 setup(
     name=package_name,
@@ -19,8 +19,8 @@ setup(
     tests_require=["pytest"],
     entry_points={
         "console_scripts": [
-            "bridge = sim_bridge.bridge:main",
-            "test_client = sim_bridge.test_client:main",
+            "bridge = web_bridge.bridge:main",
+            "test_client = web_bridge.test_client:main",
         ],
     },
 )
