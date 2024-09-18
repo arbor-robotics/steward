@@ -1,9 +1,9 @@
 FROM ros:foxy-ros1-bridge-focal
 
-RUN apt update 
+RUN apt update
 
 # Link to allow sourcing
-RUN rm /bin/sh && ln -s /bin/bash /bin/sh 
+RUN rm /bin/sh && ln -s /bin/bash /bin/sh
 
 # Alias for sourcing
 # sr1 -> source ros 1, sr2 -> source ros 2

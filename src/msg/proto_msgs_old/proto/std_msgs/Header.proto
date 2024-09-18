@@ -2,7 +2,7 @@ syntax = "proto3";
 
 import "google/protobuf/timestamp.proto";
 
-package steward;   
+package steward;
 
 message Header {
     google.protobuf.Timestamp stamp = 1;
