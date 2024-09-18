@@ -1,3 +1,5 @@
+@import url("https://fonts.googleapis.com/css2?family=Neuton:ital,wght@0,200;0,300;0,400;0,700;0,800;1,400&family=Noto+Sans:ital,wght@0,100..900;1,100..900&display=swap");
+
 // From Tailwind CSS v3.4.1
 // https://tailwindcss.com/docs/customizing-colors
 
@@ -267,7 +269,7 @@ $rose-950: #4c0519;
 
 $grey-dk-000: $gray-050 !default;
 $grey-dk-100: $gray-100 !default;
-$grey-dk-200: $gray-200!default;
+$grey-dk-200: $gray-200 !default;
 $grey-dk-250: $gray-300 !default;
 $grey-dk-300: $gray-400 !default;
 $grey-lt-000: $gray-500 !default;
@@ -296,33 +298,144 @@ $red-200: $red-200 !default;
 $red-300: $red-300 !default;
 
 // Now set our color scheme
-// https://coolors.co/79a48a-fdf3ed-bf9aca-ec9a29-131e2a
-$green-050: #C3D5C9;
-$green-100: #9FBCA9;
-$green-200: #81A78F;
-$green-300:#257466;
 
-$yellow-300: #DEB31F;
+$sand-50: #fff9ed;
+$sand-100: #fff1d5;
+$sand-200: #ffe3b3;
+$sand-300: #ffc872;
+$sand-400: #fda53a;
+$sand-500: #fc8913;
+$sand-600: #ed6d09;
+$sand-700: #c4520a;
+$sand-800: #9c4010;
+$sand-900: #7d3611;
+$sand-950: #441a06;
 
-$red-300: #EE3134;
+$forest-50: #eefffb;
+$forest-100: #c6fff3;
+$forest-200: #8dffe8;
+$forest-300: #4cfcdc;
+$forest-400: #18e9ca;
+$forest-500: #00cdb1;
+$forest-600: #00a592;
+$forest-700: #028174;
+$forest-800: #07685f;
+$forest-900: #0c554e;
+$forest-950: #003432;
 
-$seashell: #FDF3ED;
-$baby-powder: #F5F5EE;
-$seafoam: #79A48A;
-$seafoam-dark: #5B866C;
-$wisteria: #BF9ACA;
-$gambodge: #EC9A29;
-$rich-black: #131E2A;
+$meadow-50: #ebfef7;
+$meadow-100: #d0fbe8;
+$meadow-200: #a5f5d7;
+$meadow-300: #6aebc2;
+$meadow-400: #2fd8a8;
+$meadow-500: #0ab68b;
+$meadow-600: #009b78;
+$meadow-700: #007c63;
+$meadow-800: #03624f;
+$meadow-900: #045042;
+$meadow-950: #012d27;
 
-$neutral: $baby-powder;
+$lime-50: #f3fbf2;
+$lime-100: #e3f8e0;
+$lime-200: #c8efc3;
+$lime-300: #92de8b;
+$lime-400: #67ca5e;
+$lime-500: #41af38;
+$lime-600: #319029;
+$lime-700: #297124;
+$lime-800: #245a21;
+$lime-900: #1f4a1d;
+$lime-950: #0c280b;
+
+$seashell: #fdf3ed;
+$baby-powder: #f5f5ee;
+$seafoam: #79a48a;
+$seafoam-dark: #5b866c;
+$wisteria: #bf9aca;
+$gambodge: #ec9a29;
+$rich-black: #131e2a;
+
+// $neutral: #ffffff;
+$neutral: $sand-50;
 $sidebar-color: $neutral;
 $code-background-color: $neutral;
 
-.nav-list .nav-list-item .nav-list-link:hover, .nav-list .nav-list-item .nav-list-link.active {
+.nav-list .nav-list-item .nav-list-link:hover,
+.nav-list .nav-list-item .nav-list-link.active {
     background-image: none !important;
 }
 
-$link-color: $seafoam-dark;
+$link-color: $forest-600;
 $body-background-color: $neutral;
 $search-background-color: $neutral;
 $table-background-color: $neutral;
+
+.noto-sans {
+    font-family: "Noto Sans", sans-serif;
+    font-optical-sizing: auto;
+    font-weight: 400;
+    font-style: normal;
+    font-variation-settings: "wdth" 100;
+}
+
+.neuton-extralight {
+    font-family: "Neuton", serif;
+    font-weight: 200;
+    font-style: normal;
+}
+
+.neuton-light {
+    font-family: "Neuton", serif;
+    font-weight: 300;
+    font-style: normal;
+}
+
+.neuton-regular {
+    font-family: "Neuton", serif;
+    font-weight: 400;
+    font-style: normal;
+}
+
+.neuton-bold {
+    font-family: "Neuton", serif;
+    font-weight: 700;
+    font-style: normal;
+}
+
+.neuton-extrabold {
+    font-family: "Neuton", serif;
+    font-weight: 800;
+    font-style: normal;
+}
+
+.neuton-regular-italic {
+    font-family: "Neuton", serif;
+    font-weight: 400;
+    font-style: italic;
+}
+
+$body-font-family:
+    "Noto Sans",
+    system-ui,
+    -apple-system,
+    blinkmacsystemfont,
+    "Segoe UI",
+    roboto,
+    "Helvetica Neue",
+    arial,
+    sans-serif,
+    "Segoe UI Emoji";
+
+h1,
+h2 {
+    font-family: "Neuton", serif;
+    font-style: normal;
+}
+
+h1 {
+    font-weight: 400 !important;
+    color: $forest-700 !important;
+}
+
+$font-size-10: 3rem;
+$font-size-10-sm: 3.6rem;

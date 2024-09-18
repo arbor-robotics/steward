@@ -1,31 +1,30 @@
 ---
 title: Home
 layout: home
+nav_order: 1
+last_modified_date: 2024-08-30 0:00:00 +0000
 ---
+# Steward: Your <br/> Reforestation Companion
+{: .fs-10 }
 
-# About Stu
+# Introduction
 
-The **Digital Steward**, or Stu, is a robotic tree planting companion built by grad students in Carnegie Mellon's Robotics Institute.
+Steward is a robot that plants trees on marginal pastureland. This documentation describes Steward's software components. We separate Steward's software into three suites:
 
-Stu's custom code is entirely open-source. That means that it's free to use and completely transparent. Our code documentation lives here. It's for nerds, so if you're not a nerd, may we suggest reading our main project site instead?
+- **Steward OS**, the core code, which is organized as a ROS2 workspace
+- [**EcoSim**](https://arbor-robotics.github.io/ecosim), a simulation tool built with the Unity game engine
+- **Canopy**, a web-based user interface
 
-# Architecture
+This documentation is specifically for Steward OS.
 
-<div style="width: 640px; height: 480px; margin: 10px; position: relative;"><iframe allowfullscreen frameborder="0" style="width:640px; height:480px" src="https://lucid.app/documents/embedded/b676de26-bdc8-4fa0-baab-b34b08dfedc9" id="zyVbuUjpbA7-"></iframe></div>
+# Overview of Steward OS
 
-# Dependencies
+Steward OS is a collection of ROS2 nodes, where each node is a program written to perform a specific task. Nodes are organized into the following groups:
 
-- Ubuntu 22.04 LTS
-- ROS2 Humble (https://docs.ros.org/en/humble/Installation/Ubuntu-Install-Debians.html)
-- [pre-commit](https://pre-commit.com/#installation)
-  - `$ pip install pre-commit && pre-commit --version`
+- **Interfaces**: Interfaces to sensors, the simulator, Canopy, etc.
+- **Perception**: Classifiers, detectors, and state estimators
+- **Planning**: Path planners, costmap generators, and behavior managers
+- **Control**: Nodes to turn high-level goals into low-level actuation commands
+- **Actuation**: Nodes for moving the robot
 
-# Installation
-
-```bash
-$ git clone https://github.com/arbor-robotics/steward.git
-$ cd steward
-$ colcon build
-$ . install/setup.bash # Must run in every new terminal.
-
-```
+[![Architecture flowchart](/assets/images/sw-architecture-24-08-30.svg)](/assets/images/sw-architecture-24-08-30.svg)

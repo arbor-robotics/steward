@@ -1,10 +1,10 @@
-title: Stu
-description: Your friendly tree-planting companion developed by Arbor Robotics at CMU.
+title: Steward Docs
+description: Your Reforestation Companion developed by Arbor Robotics at CMU.
 theme: just-the-docs
 
 color_scheme: arbor # see _sass/
 
-url: https://just-the-docs.github.io
+url: https:/arbor-robotics.github.io/steward
 # logo: "/assets/images/arbor-logo.png"
 favicon_ico: "/assets/images/arbor-logo.png"
 
@@ -27,3 +27,11 @@ callouts:
 aux_links:
   "Github Repo":
     - "https://github.com/arbor-robotics/steward"
+
+mermaid:
+  # Version of mermaid library
+  # Pick an available version from https://cdn.jsdelivr.net/npm/mermaid/
+  version: "11.2.1"
+
+last_edit_timestamp: true # show or hide edit time - page must have `last_modified_date` defined in the frontmatter
+last_edit_time_format: "%b %e %Y at %I:%M %p" # uses ruby's time format: https://ruby-doc.org/stdlib-2.7.0/libdoc/time/rdoc/Time.html
