@@ -57,6 +57,8 @@ class WarthogBridge(Node):
 
         # CONTROLLER_FREQ = 100  # Hz
         self.create_timer(1.0, self.publishHeartbeat)
+        self.requestTopics()
+        self.subscribeToDiagnostics()
         # self.create_timer(0.1, self.sendWsTwist)
         self.teleop_connections: list[ServerConnection] = []
 
@@ -121,13 +123,20 @@ class WarthogBridge(Node):
         self.turn = msg.angular.z
         self.get_logger().info(f"Received throt {self.throttle}, turn {self.turn}")
 
+    def requestTopics(self):
+        self.outgoing_messages.append(
+            json.dumps({"op": "call_service", "service": "/rosapi/topics"})
+        )
+
+    def subscribeToDiagnostics(self):
+        self.outgoing_messages.append(
+            json.dumps({"op": "subscribe", "topic": "/diagnostics_agg"})
+        )
+
     def publishHeartbeat(self):
         """This is where a "heartbeat" or more detailed diagnostics should be published."""
         # self.get_logger().info("I'm still alive!")
 
-        self.outgoing_messages.append(
-            json.dumps({"op": "call_service", "service": "/rosapi/topics"})
-        )
         pass
 
     # async def handleConnection(self, websocket):
