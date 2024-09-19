@@ -2,6 +2,8 @@ import asyncio
 from websockets.asyncio.server import serve, Server, ServerConnection
 from websockets.exceptions import ConnectionClosedError
 
+from websockets.asyncio.client import connect, ClientConnection
+
 from matplotlib import pyplot as plt
 from matplotlib import image as mpimg
 import io
@@ -18,6 +20,8 @@ from random import randbytes, randint
 from geometry_msgs.msg import Twist
 from sensor_msgs.msg import Image, CompressedImage
 
+import json
+
 
 class MessageType:
     IMAGE = 0x00
@@ -25,7 +29,7 @@ class MessageType:
     TELEOP = 0x02
 
 
-class WebsocketBridge(Node):
+class WarthogBridge(Node):
     def __init__(self):
         super().__init__("websocket_bridge")
 
@@ -49,7 +53,7 @@ class WebsocketBridge(Node):
 
         # CONTROLLER_FREQ = 100  # Hz
         self.create_timer(0.1, self.publishHeartbeat)
-        self.create_timer(0.1, self.sendWsTwist)
+        # self.create_timer(0.1, self.sendWsTwist)
         self.teleop_connections: list[ServerConnection] = []
 
     async def sendWsTwist(self):
@@ -164,7 +168,7 @@ from std_msgs.msg import String
 
 rclpy.init()
 # node = rclpy.create_node("async_subscriber")
-node = WebsocketBridge()
+node = WarthogBridge()
 
 
 async def handleConnection(connection: ServerConnection):
@@ -208,12 +212,24 @@ async def handleConnection(connection: ServerConnection):
         )
 
 
-async def spinWebsocketServer():
+async def connectToServer():
 
-    node.get_logger().info("Starting KISS Server")
+    node.get_logger().info("Connecting to Warthog")
 
-    async with serve(handleConnection, "localhost", 8765):
-        await asyncio.get_running_loop().create_future()  # run forever
+    async with connect("ws://192.168.131.1:9090") as websocket:
+        # name = input("What's your name? ")
+
+        op = json.dumps({"op": "call_service", "service": "/rosapi/topics"})
+
+        await websocket.send(op)
+        print(f">>> {op}")
+
+        service_response = await websocket.recv()
+
+        json_formatted_str = json.loads(service_response)
+
+        print(json_formatted_str["values"]["topics"])
+        # print(f"<<< {greeting}")
 
 
 async def spinRos(freq=1e4):
@@ -225,7 +241,7 @@ async def spinRos(freq=1e4):
 
 def main():
     # Run both the ROS loop and the Websocket server loop
-    future = asyncio.wait([spinRos(), spinWebsocketServer()])
+    future = asyncio.wait([spinRos(), connectToServer()])
 
     # Spin until both loops complete or are cancelled
     asyncio.get_event_loop().run_until_complete(future)

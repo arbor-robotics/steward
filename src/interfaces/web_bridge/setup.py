@@ -21,6 +21,7 @@ setup(
         "console_scripts": [
             "bridge = web_bridge.bridge:main",
             "test_client = web_bridge.test_client:main",
+            "warthog_bridge = web_bridge.warthog_bridge:main",
         ],
     },
 )
