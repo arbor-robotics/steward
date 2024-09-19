@@ -3,6 +3,8 @@ from websockets.asyncio.server import serve, Server, ServerConnection
 from websockets.exceptions import ConnectionClosedError
 
 from websockets.asyncio.client import connect, ClientConnection
+import websocket
+
 
 from matplotlib import pyplot as plt
 from matplotlib import image as mpimg
@@ -19,8 +21,10 @@ from random import randbytes, randint
 from collections import deque
 
 # ROS message types
+from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
 from geometry_msgs.msg import Twist
 from sensor_msgs.msg import Image, CompressedImage
+from std_msgs.msg import Header
 
 import json
 
@@ -37,6 +41,11 @@ class WarthogBridge(Node):
 
         self.bridge = CvBridge()
 
+        self.ws = websocket.WebSocket()
+
+        self.ws.connect("ws://192.168.131.1:9090", timeout=0.1)
+        print("Connected!")
+
         # Cached variables for teleop commands
         self.throttle = 0
         self.turn = 0
@@ -51,10 +60,6 @@ class WarthogBridge(Node):
             CompressedImage, "/rgb/image_rect_color_compressed", 10
         )
 
-        self.cmd_vel_sub = self.create_subscription(
-            Twist, "/cmd_vel", self.cmdVelCb, 10
-        )
-
         # CONTROLLER_FREQ = 100  # Hz
         self.create_timer(1.0, self.publishHeartbeat)
         self.requestTopics()
@@ -62,76 +67,96 @@ class WarthogBridge(Node):
         # self.create_timer(0.1, self.sendWsTwist)
         self.teleop_connections: list[ServerConnection] = []
 
-    async def sendWsTwist(self):
-        if len(self.teleop_connections) < 1:
-            print("no connections")
-            return
+        self.create_timer(0.1, self.checkMessages)
 
-        # message = [MessageType.TELEOP] + randbytes(2)
-        # self.get_logger().info(message)
+        self.warthog_diagnostic_pub = self.create_publisher(
+            DiagnosticArray, "/diagnostics/warthog", 10
+        )
 
-        # Remove inactive connections
-        self.teleop_connections = [x for x in self.teleop_connections if x.state == 1]
-
-        # message = [MessageType.TELEOP] + bytearray(randbytes(2))
-
-        throttle_byte = int((self.throttle + 1) * 128 - 1)
-        turn_byte = int((self.turn + 1) * 128 - 1)
-
-        print(f"{self.throttle} -> {throttle_byte}")
-        print(f"{self.turn} -> {turn_byte}")
-
-        if throttle_byte > 256:
-            throttle_byte = 256
-            self.get_logger().warning(
-                f"Throttle byte {throttle_byte} was too big. Capping to 256."
-            )
-        elif throttle_byte < 0:
-            throttle_byte = 0
-            self.get_logger().warning(
-                f"Throttle byte {throttle_byte} was too small. Capping to 0."
-            )
-        if turn_byte > 256:
-            turn_byte = 256
-            self.get_logger().warning(
-                f"Turn byte {turn_byte} was too big. Capping to 256."
-            )
-        elif turn_byte < 0:
-            turn_byte = 0
-            self.get_logger().warning(
-                f"Turn byte {turn_byte} was too small. Capping to 0."
-            )
-        message = bytearray([MessageType.TELEOP, throttle_byte, turn_byte])
-        # print(f"{self.tur}, {turn_byte}")
-
-        # print(self.teleop_connections)
-
-        for connection in self.teleop_connections:
-            # self.get_logger().info(
-            #     f"Sending teleop message to {connection.id} {connection.state}"
-            # )
-            await connection.send(message)
-
-    def cmdVelCb(self, msg: Twist):
-        """Send the Twist message to the Websocket server
-
-        Args:
-            msg (Twist): _description_
+    def republishDiagnostics(self, msgDictionary: dict):
         """
-        # self.get_logger().info("HELLO")
-        self.throttle = msg.linear.x
-        self.turn = msg.angular.z
-        self.get_logger().info(f"Received throt {self.throttle}, turn {self.turn}")
+        Takes a JSON-formatted DiagnosticArray message, repackages it as a
+        ROS2 DiagnosticArray message, and republishes it in ROS2.
+        """
+        headerDict = msgDictionary["header"]
+        msg = DiagnosticArray()
+
+        msg.header.stamp.sec = headerDict["stamp"]["secs"]
+        msg.header.stamp.nanosec = headerDict["stamp"]["nsecs"]
+        msg.header.frame_id = headerDict["frame_id"]
+
+        for status in msgDictionary["status"]:
+            status_msg = DiagnosticStatus()
+            status_msg.level = bytes([status["level"]])
+            status_msg.name = status["name"]
+            status_msg.message = status["message"]
+            status_msg.hardware_id = status["hardware_id"]
+
+            for key_val in status["values"]:
+                kv = KeyValue()
+                kv.key = key_val["key"]
+                kv.value = key_val["value"]
+
+                status_msg.values.append(kv)
+
+            msg.status.append(status_msg)
+
+        self.warthog_diagnostic_pub.publish(msg)
+
+    def checkMessages(self):
+        # print("Checcking messages")
+        try:
+            msg = json.loads(self.ws.recv())
+
+            if msg["op"] == "service_response":
+                return
+
+            elif msg["op"] == "publish":
+                # We've received a message from a subscription
+                if msg["topic"] == "/diagnostics_agg":
+                    # Process diagnostics
+                    self.republishDiagnostics(msg["msg"])
+
+                else:
+                    self.get_logger().warning(f"Unknown topic {msg['topic']}")
+            # print("\n\nDIAGNOSTICS")
+            # print(msg)
+
+            # exit()
+            # msg = msg["msg"]
+
+            # status_list = msg["status"]
+
+            # for status in status_list:
+            #     print(status)
+
+            # print(msg)
+        except Exception as e:
+            if str(e).find("Connection timed out") != -1:
+                # self.get_logger().warning(f"No messages. {e}")
+                return
+            else:
+                self.get_logger().error(f"{e}")
 
     def requestTopics(self):
-        self.outgoing_messages.append(
-            json.dumps({"op": "call_service", "service": "/rosapi/topics"})
-        )
+        # self.outgoing_messages.append(
+        #     json.dumps({"op": "call_service", "service": "/rosapi/topics"})
+        # )
+
+        if not self.ws.connected:
+            self.get_logger().warning("Not connected to Warthog. Can't get topics.")
+            return
+
+        self.ws.send(json.dumps({"op": "call_service", "service": "/rosapi/topics"}))
 
     def subscribeToDiagnostics(self):
-        self.outgoing_messages.append(
-            json.dumps({"op": "subscribe", "topic": "/diagnostics_agg"})
-        )
+        if not self.ws.connected:
+            self.get_logger().warning(
+                "Not connected to Warthog. Can't sub to diagnostics."
+            )
+            return
+
+        self.ws.send(json.dumps({"op": "subscribe", "topic": "/diagnostics_agg"}))
 
     def publishHeartbeat(self):
         """This is where a "heartbeat" or more detailed diagnostics should be published."""
@@ -223,55 +248,12 @@ async def handleConnection(connection: ServerConnection):
         )
 
 
-async def connectToServer():
-
-    node.get_logger().info("Connecting to Warthog")
-
-    async with connect("ws://192.168.131.1:9090") as websocket:
-        node.get_logger().info("Connected")
-        # name = input("What's your name? ")
-
-        # op =
-
-        # await websocket.send(op)
-        # print(f">>> {op}")
-
-        # json_formatted_str = json.loads(service_response)
-
-        # print(json_formatted_str["values"]["topics"])
-
-        while True:
-            if len(node.outgoing_messages) < 1:
-                node.get_logger().info("No outgoing messages")
-                await asyncio.sleep(0.1)
-
-                continue
-            else:
-                node.get_logger().info(
-                    f"There are {len(node.outgoing_messages)} messages"
-                )
-
-            message = node.outgoing_messages.popleft()
-            node.get_logger().info(str(message))
-            await websocket.send(message)
-            service_response = await websocket.recv()
-            json_formatted_str = json.loads(service_response)
-            print(json_formatted_str["values"]["topics"])
-
-            await asyncio.sleep(0.1)
-        # print(f"<<< {greeting}")
-
-
-async def spinRos(freq=1e4):
-    while rclpy.ok():
-        # Manually spin the ROS node at a rate of 1e4 Hz.
-        rclpy.spin_once(node, timeout_sec=0)
-        await asyncio.sleep(1 / freq)
-
-
 def main():
-    # Run both the ROS loop and the Websocket server loop
-    future = asyncio.wait([spinRos(), connectToServer()])
+    rclpy.spin(node)
+
+    node.ws.close()
+    node.destroy_node()
+    rclpy.shutdown()
 
     # Spin until both loops complete or are cancelled
-    asyncio.get_event_loop().run_until_complete(future)
+    # asyncio.get_event_loop().run_until_complete(future)
