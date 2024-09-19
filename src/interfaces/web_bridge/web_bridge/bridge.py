@@ -118,9 +118,9 @@ class WebsocketBridge(Node):
         # self.get_logger().info("I'm still alive!")
         pass
 
-    async def handleConnection(self, websocket):
-        async for message in websocket:
-            await websocket.send(message)
+    # async def handleConnection(self, websocket):
+    #     async for message in websocket:
+    #         await websocket.send(message)
 
     def publishImageBytes(self, img_str):
 
