@@ -16,6 +16,8 @@ from PIL import Image as PILImage
 import cv2
 from random import randbytes, randint
 
+from collections import deque
+
 # ROS message types
 from geometry_msgs.msg import Twist
 from sensor_msgs.msg import Image, CompressedImage
@@ -41,6 +43,8 @@ class WarthogBridge(Node):
 
         self.setUpParameters()
 
+        self.outgoing_messages = deque()
+
         # TODO: Create proper QoS profile.
         self.image_pub = self.create_publisher(Image, "/rgb/image_rect_color", 10)
         self.compressed_image_pub = self.create_publisher(
@@ -52,7 +56,7 @@ class WarthogBridge(Node):
         )
 
         # CONTROLLER_FREQ = 100  # Hz
-        self.create_timer(0.1, self.publishHeartbeat)
+        self.create_timer(1.0, self.publishHeartbeat)
         # self.create_timer(0.1, self.sendWsTwist)
         self.teleop_connections: list[ServerConnection] = []
 
@@ -120,6 +124,10 @@ class WarthogBridge(Node):
     def publishHeartbeat(self):
         """This is where a "heartbeat" or more detailed diagnostics should be published."""
         # self.get_logger().info("I'm still alive!")
+
+        self.outgoing_messages.append(
+            json.dumps({"op": "call_service", "service": "/rosapi/topics"})
+        )
         pass
 
     # async def handleConnection(self, websocket):
@@ -161,13 +169,7 @@ class WarthogBridge(Node):
         pass
 
 
-import asyncio
-
-import rclpy
-from std_msgs.msg import String
-
 rclpy.init()
-# node = rclpy.create_node("async_subscriber")
 node = WarthogBridge()
 
 
@@ -217,18 +219,37 @@ async def connectToServer():
     node.get_logger().info("Connecting to Warthog")
 
     async with connect("ws://192.168.131.1:9090") as websocket:
+        node.get_logger().info("Connected")
         # name = input("What's your name? ")
 
-        op = json.dumps({"op": "call_service", "service": "/rosapi/topics"})
+        # op =
 
-        await websocket.send(op)
-        print(f">>> {op}")
+        # await websocket.send(op)
+        # print(f">>> {op}")
 
-        service_response = await websocket.recv()
+        # json_formatted_str = json.loads(service_response)
 
-        json_formatted_str = json.loads(service_response)
+        # print(json_formatted_str["values"]["topics"])
 
-        print(json_formatted_str["values"]["topics"])
+        while True:
+            if len(node.outgoing_messages) < 1:
+                node.get_logger().info("No outgoing messages")
+                await asyncio.sleep(0.1)
+
+                continue
+            else:
+                node.get_logger().info(
+                    f"There are {len(node.outgoing_messages)} messages"
+                )
+
+            message = node.outgoing_messages.popleft()
+            node.get_logger().info(str(message))
+            await websocket.send(message)
+            service_response = await websocket.recv()
+            json_formatted_str = json.loads(service_response)
+            print(json_formatted_str["values"]["topics"])
+
+            await asyncio.sleep(0.1)
         # print(f"<<< {greeting}")
 
 
