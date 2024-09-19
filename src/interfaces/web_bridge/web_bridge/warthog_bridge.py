@@ -59,9 +59,8 @@ class WarthogBridge(Node):
         self.outgoing_messages = deque()
 
         # TODO: Create proper QoS profile.
-        self.image_pub = self.create_publisher(Image, "/rgb/image_rect_color", 10)
-        self.compressed_image_pub = self.create_publisher(
-            CompressedImage, "/rgb/image_rect_color_compressed", 10
+        self.cmd_vel_sub = self.create_subscription(
+            Twist, "/cmd_vel", self.cmdVelCb, 10
         )
 
         # CONTROLLER_FREQ = 100  # Hz
@@ -86,6 +85,18 @@ class WarthogBridge(Node):
 
         self.imu_pub = self.create_publisher(Imu, "/imu/warthog", 10)
 
+    def cmdVelCb(self, msg: Twist):
+        # Form a Rosbridge cmd_vel message to publish
+        twist_msg = {"linear": {"x": msg.linear.x}, "angular": {"z": msg.angular.z}}
+
+        print(twist_msg)
+
+        op = {"op": "publish", "topic": "/cmd_vel", "msg": twist_msg}
+
+        msg = json.dumps(op)
+
+        self.ws.send(msg)
+
     def sendLightCommand(self):
 
         freq = 4
@@ -93,7 +104,7 @@ class WarthogBridge(Node):
         rgb = {"red": 0.0, "green": brightness, "blue": 0.0}
         lights_msg = {"lights": [rgb for _ in range(4)]}
 
-        print(lights_msg)
+        # print(lights_msg)
 
         op = {"op": "publish", "topic": "/cmd_lights", "msg": lights_msg}
 
@@ -156,6 +167,36 @@ class WarthogBridge(Node):
 
         self.wheel_odom_pub.publish(msg)
 
+    def republishImu(self, imuDict: dict):
+        """
+        Takes a JSON-formatted DiagnosticArray message, repackages it as a
+        ROS2 DiagnosticArray message, and republishes it in ROS2.
+        """
+        headerDict = imuDict["header"]
+        msg = Imu()
+
+        msg.header.stamp.sec = headerDict["stamp"]["secs"]
+        msg.header.stamp.nanosec = headerDict["stamp"]["nsecs"]
+        msg.header.frame_id = headerDict["frame_id"]
+
+        msg.orientation.x = imuDict["orientation"]["x"]
+        msg.orientation.y = imuDict["orientation"]["y"]
+        msg.orientation.z = imuDict["orientation"]["z"]
+        msg.orientation.w = imuDict["orientation"]["w"]
+        msg.orientation_covariance = imuDict["orientation_covariance"]
+
+        msg.angular_velocity.x = imuDict["angular_velocity"]["x"]
+        msg.angular_velocity.y = imuDict["angular_velocity"]["y"]
+        msg.angular_velocity.z = imuDict["angular_velocity"]["z"]
+        msg.angular_velocity_covariance = imuDict["angular_velocity_covariance"]
+
+        msg.linear_acceleration.x = imuDict["linear_acceleration"]["x"]
+        msg.linear_acceleration.y = imuDict["linear_acceleration"]["y"]
+        msg.linear_acceleration.z = imuDict["linear_acceleration"]["z"]
+        msg.linear_acceleration_covariance = imuDict["linear_acceleration_covariance"]
+
+        self.imu_pub.publish(msg)
+
     def checkMessages(self):
         # print("Checcking messages")
         try:
@@ -172,6 +213,9 @@ class WarthogBridge(Node):
 
                 elif msg["topic"] == "/odometry/filtered":
                     self.republishOdometry(msg["msg"])
+
+                elif msg["topic"] == "/imu/data":
+                    self.republishImu(msg["msg"])
                 else:
                     print(msg)
                     self.get_logger().warning(f"Unknown topic {msg['topic']}")
