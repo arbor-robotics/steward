@@ -23,10 +23,14 @@ from collections import deque
 # ROS message types
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
 from geometry_msgs.msg import Twist
-from sensor_msgs.msg import Image, CompressedImage
+from nav_msgs.msg import Odometry
+from sensor_msgs.msg import Image, CompressedImage, Imu
 from std_msgs.msg import Header
 
 import json
+
+import math
+from time import time
 
 
 class MessageType:
@@ -64,14 +68,38 @@ class WarthogBridge(Node):
         self.create_timer(1.0, self.publishHeartbeat)
         self.requestTopics()
         self.subscribeToDiagnostics()
+        self.subscribeToWarthogTopic("/imu/data")
+        self.subscribeToWarthogTopic("/odometry/filtered")
         # self.create_timer(0.1, self.sendWsTwist)
         self.teleop_connections: list[ServerConnection] = []
 
         self.create_timer(0.1, self.checkMessages)
+        self.create_timer(0.1, self.sendLightCommand)
+
+        self.light_brightness = 0.0
 
         self.warthog_diagnostic_pub = self.create_publisher(
             DiagnosticArray, "/diagnostics/warthog", 10
         )
+
+        self.wheel_odom_pub = self.create_publisher(Odometry, "/odom/wheel", 10)
+
+        self.imu_pub = self.create_publisher(Imu, "/imu/warthog", 10)
+
+    def sendLightCommand(self):
+
+        freq = 4
+        brightness = (math.sin(time() * freq) + 1) / 2
+        rgb = {"red": 0.0, "green": brightness, "blue": 0.0}
+        lights_msg = {"lights": [rgb for _ in range(4)]}
+
+        print(lights_msg)
+
+        op = {"op": "publish", "topic": "/cmd_lights", "msg": lights_msg}
+
+        msg = json.dumps(op)
+
+        self.ws.send(msg)
 
     def republishDiagnostics(self, msgDictionary: dict):
         """
@@ -103,13 +131,38 @@ class WarthogBridge(Node):
 
         self.warthog_diagnostic_pub.publish(msg)
 
+    def republishOdometry(self, odomDict: dict):
+        """
+        Takes a JSON-formatted DiagnosticArray message, repackages it as a
+        ROS2 DiagnosticArray message, and republishes it in ROS2.
+        """
+        headerDict = odomDict["header"]
+        msg = Odometry()
+
+        msg.header.stamp.sec = headerDict["stamp"]["secs"]
+        msg.header.stamp.nanosec = headerDict["stamp"]["nsecs"]
+        msg.header.frame_id = headerDict["frame_id"]
+
+        msg.child_frame_id = odomDict["child_frame_id"]
+        msg.twist.twist.linear.x = odomDict["twist"]["twist"]["linear"]["x"]
+        msg.twist.twist.linear.y = odomDict["twist"]["twist"]["linear"]["y"]
+        msg.twist.twist.linear.z = odomDict["twist"]["twist"]["linear"]["z"]
+
+        msg.twist.twist.angular.x = odomDict["twist"]["twist"]["angular"]["x"]
+        msg.twist.twist.angular.y = odomDict["twist"]["twist"]["angular"]["y"]
+        msg.twist.twist.angular.z = odomDict["twist"]["twist"]["angular"]["z"]
+
+        msg.twist.covariance = odomDict["twist"]["covariance"]
+
+        self.wheel_odom_pub.publish(msg)
+
     def checkMessages(self):
         # print("Checcking messages")
         try:
             msg = json.loads(self.ws.recv())
 
             if msg["op"] == "service_response":
-                return
+                print(msg)
 
             elif msg["op"] == "publish":
                 # We've received a message from a subscription
@@ -117,7 +170,10 @@ class WarthogBridge(Node):
                     # Process diagnostics
                     self.republishDiagnostics(msg["msg"])
 
+                elif msg["topic"] == "/odometry/filtered":
+                    self.republishOdometry(msg["msg"])
                 else:
+                    print(msg)
                     self.get_logger().warning(f"Unknown topic {msg['topic']}")
             # print("\n\nDIAGNOSTICS")
             # print(msg)
@@ -158,45 +214,20 @@ class WarthogBridge(Node):
 
         self.ws.send(json.dumps({"op": "subscribe", "topic": "/diagnostics_agg"}))
 
+    def subscribeToWarthogTopic(self, topic: str):
+        if not self.ws.connected:
+            self.get_logger().warning(
+                f"Not connected to Warthog. Can't sub to {topic}."
+            )
+            return
+
+        self.ws.send(json.dumps({"op": "subscribe", "topic": topic}))
+
     def publishHeartbeat(self):
         """This is where a "heartbeat" or more detailed diagnostics should be published."""
         # self.get_logger().info("I'm still alive!")
 
         pass
-
-    # async def handleConnection(self, websocket):
-    #     async for message in websocket:
-    #         await websocket.send(message)
-
-    def publishImageBytes(self, img_str):
-
-        # Start with compressed publisher
-        compressed_msg = CompressedImage()
-
-        # print(img_str)
-        compressed_msg.data = img_str
-        compressed_msg.format = "jpeg"
-        # TODO: Header
-
-        self.compressed_image_pub.publish(compressed_msg)
-
-        img_np = np.array(PILImage.open(io.BytesIO(img_str)))
-
-        # bytes_arr = np.array(cv2.imdecode(io.BytesIO(bytes)))
-
-        img_np = cv2.flip(img_np, 0)
-        # img_np = cv2.cvtColor(img_np, cv2.COLOR_BGR2RGB)
-
-        if img_np.shape[-1] == 4:
-            msg = self.bridge.cv2_to_imgmsg(img_np, "rgba8")
-        else:
-            msg = self.bridge.cv2_to_imgmsg(img_np, "rgb8")
-
-        # bytes_arr = mpimg.imread()
-        # plt.imshow(bytes_arr)
-        # self.get_logger().info(str(bytes_arr))
-        self.image_pub.publish(msg)
-        # plt.show()
 
     def setUpParameters(self):
         """Not used. Declare ROS params here."""
