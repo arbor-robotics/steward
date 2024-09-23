@@ -86,7 +86,7 @@ def zed_launch_setup(context, *args, **kwargs):
     xacro_command.append(default_xacro_path)
     xacro_command.append(" ")
     xacro_command.append("camera_name:=")
-    xacro_command.append("zed")
+    xacro_command.append("camera_front")
     xacro_command.append(" ")
     xacro_command.append("camera_model:=")
     xacro_command.append("zed")
@@ -133,13 +133,17 @@ def zed_launch_setup(context, *args, **kwargs):
             # "simulation.sim_port": sim_port,
             # "stream.stream_address": stream_address,
             # "stream.stream_port": stream_port,
-            "general.camera_name": "zed",
+            "general.camera_name": "camera_front",
             "general.camera_model": "zed",
+            "general.grab_resolution": "VGA",
             # "svo.svo_path": svo_path,
             # "general.serial_number": serial_number,
             "pos_tracking.publish_tf": publish_tf,
             "pos_tracking.publish_map_tf": False,
             "sensors.publish_imu_tf": True,
+            "pos_tracking.pos_tracking_enabled": False,
+            "debug.sdk_verbose": 0,
+            "debug.debug_common": False,
             # "gnss_fusion.gnss_fusion_enabled": enable_gnss,
         },
     ]
@@ -150,14 +154,15 @@ def zed_launch_setup(context, *args, **kwargs):
     # ZED Wrapper node
     zed_wrapper_node = Node(
         package="zed_wrapper",
-        namespace="zed",
+        namespace="",
         executable="zed_wrapper",
         name=node_name,
-        output="screen",
+        # output="log",
         # prefix=['xterm -e valgrind --tools=callgrind'],
         # prefix=['xterm -e gdb -ex run --args'],
         # prefix=['gdbserver localhost:3000'],
         parameters=node_parameters,
+        arguments=["--ros-args", "--log-level", "WARN"],
     )
 
     return [rsp_node, zed_wrapper_node]
@@ -214,6 +219,9 @@ def generate_launch_description():
     route_planner = Node(package="route_planning", executable="route_planner")
     mvp_controller = Node(package="motion_control", executable="mvp_controller")
 
+    gnss = Node(package="gnss_interface", executable="interface")
+    warthog_bridge = Node(package="web_bridge", executable="warthog_bridge")
+
     return LaunchDescription(
         [
             DeclareLaunchArgument(
@@ -222,7 +230,9 @@ def generate_launch_description():
                 description="Path to the YAML configuration file for the camera.",
             ),
             # INTERFACES
-            OpaqueFunction(function=zed_launch_setup),
+            OpaqueFunction(function=zed_launch_setup),  # camera
+            gnss,
+            warthog_bridge,
             # PERCEPTION
             # PLANNING
             # forest_planner,

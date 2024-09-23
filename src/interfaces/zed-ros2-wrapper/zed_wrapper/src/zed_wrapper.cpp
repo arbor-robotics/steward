@@ -34,8 +34,11 @@ int main(int argc, char * argv[])
 
   options.use_intra_process_comms(true);
 
+  // options.ros
+
   // Add zed_camera node
   auto zed_node = std::make_shared<stereolabs::ZedCamera>(options);
+
   exec.add_node(zed_node);
 
   // spin will block until work comes in, execute work as it becomes available, and keep blocking.
