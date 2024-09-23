@@ -47,9 +47,6 @@ class WarthogBridge(Node):
 
         self.ws = websocket.WebSocket()
 
-        self.ws.connect("ws://192.168.131.1:9090", timeout=0.1)
-        print("Connected!")
-
         # Cached variables for teleop commands
         self.throttle = 0
         self.turn = 0
@@ -74,6 +71,7 @@ class WarthogBridge(Node):
 
         self.create_timer(0.1, self.checkMessages)
         self.create_timer(0.1, self.sendLightCommand)
+        self.create_timer(3.0, self.checkConnection)
 
         self.light_brightness = 0.0
 
@@ -86,6 +84,7 @@ class WarthogBridge(Node):
         self.imu_pub = self.create_publisher(Imu, "/imu/warthog", 10)
 
     def cmdVelCb(self, msg: Twist):
+
         # Form a Rosbridge cmd_vel message to publish
         twist_msg = {"linear": {"x": msg.linear.x}, "angular": {"z": msg.angular.z}}
 
@@ -95,7 +94,13 @@ class WarthogBridge(Node):
 
         msg = json.dumps(op)
 
-        self.ws.send(msg)
+        self.send(msg)
+
+    def send(self, data):
+        if not self.ws.connected:
+            return
+
+        self.ws.send(data)
 
     def sendLightCommand(self):
 
@@ -110,7 +115,7 @@ class WarthogBridge(Node):
 
         msg = json.dumps(op)
 
-        self.ws.send(msg)
+        self.send(msg)
 
     def republishDiagnostics(self, msgDictionary: dict):
         """
@@ -197,7 +202,25 @@ class WarthogBridge(Node):
 
         self.imu_pub.publish(msg)
 
+    def checkConnection(self):
+        if self.ws.connected:
+            return  # Already connected.
+        try:
+            self.ws.connect("ws://192.168.131.1:9090", timeout=0.1)
+            self.get_logger().info("Connected!")
+            self.subscribeToWarthogTopic("/imu/data")
+            self.subscribeToWarthogTopic("/odometry/filtered")
+            self.subscribeToDiagnostics()
+
+        except ConnectionRefusedError as e:
+            self.get_logger().warning(
+                "Couldn't connect to Warthog Rosbridge Server. Retrying."
+            )
+
     def checkMessages(self):
+
+        if not self.ws.connected:
+            return
         # print("Checcking messages")
         try:
             msg = json.loads(self.ws.recv())
@@ -209,6 +232,7 @@ class WarthogBridge(Node):
                 # We've received a message from a subscription
                 if msg["topic"] == "/diagnostics_agg":
                     # Process diagnostics
+
                     self.republishDiagnostics(msg["msg"])
 
                 elif msg["topic"] == "/odometry/filtered":
@@ -247,7 +271,7 @@ class WarthogBridge(Node):
             self.get_logger().warning("Not connected to Warthog. Can't get topics.")
             return
 
-        self.ws.send(json.dumps({"op": "call_service", "service": "/rosapi/topics"}))
+        self.send(json.dumps({"op": "call_service", "service": "/rosapi/topics"}))
 
     def subscribeToDiagnostics(self):
         if not self.ws.connected:
@@ -256,7 +280,7 @@ class WarthogBridge(Node):
             )
             return
 
-        self.ws.send(json.dumps({"op": "subscribe", "topic": "/diagnostics_agg"}))
+        self.send(json.dumps({"op": "subscribe", "topic": "/diagnostics_agg"}))
 
     def subscribeToWarthogTopic(self, topic: str):
         if not self.ws.connected:
@@ -265,7 +289,7 @@ class WarthogBridge(Node):
             )
             return
 
-        self.ws.send(json.dumps({"op": "subscribe", "topic": topic}))
+        self.send(json.dumps({"op": "subscribe", "topic": topic}))
 
     def publishHeartbeat(self):
         """This is where a "heartbeat" or more detailed diagnostics should be published."""
@@ -329,6 +353,3 @@ def main():
     node.ws.close()
     node.destroy_node()
     rclpy.shutdown()
-
-    # Spin until both loops complete or are cancelled
-    # asyncio.get_event_loop().run_until_complete(future)
