@@ -83,7 +83,6 @@ class WarthogBridge(Node):
 
         self.imu_pub = self.create_publisher(Imu, "/imu/warthog", 10)
 
-
     def cmdVelCb(self, msg: Twist):
 
         # Form a Rosbridge cmd_vel message to publish

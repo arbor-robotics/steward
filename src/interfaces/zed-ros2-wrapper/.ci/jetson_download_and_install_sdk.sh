@@ -12,7 +12,7 @@ ttk="***>"
 
 echo "Europe/Paris" > /etc/timezone
 echo "# R${L4T_MAJOR} (release), REVISION: ${L4T_MINOR}" > /etc/nv_tegra_release
-    
+
 #Install ZED SDK
 echo "${ttk} Installing ZED SDK v${ZED_SDK_MAJOR}.${ZED_SDK_MINOR} for Jetpack ${JETPACK_MAJOR}.${JETPACK_MINOR} (L4T v${L4T_MAJOR}.${L4T_MINOR})"
 apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 42D5A192B819C5DA

@@ -31,15 +31,15 @@ This package lets you use the ZED stereo cameras with ROS 2. It provides access 
 - [Ubuntu 20.04 (Focal Fossa)](https://releases.ubuntu.com/focal/) or [Ubuntu 22.04 (Jammy Jellyfish)](https://releases.ubuntu.com/jammy/)
 - [ZED SDK](https://www.stereolabs.com/developers/release/latest/) v4.1 (for older versions support please check the [releases](https://github.com/stereolabs/zed-ros2-wrapper/releases))
 - [CUDA](https://developer.nvidia.com/cuda-downloads) dependency
-- ROS 2 Foxy Fitxroy or ROS 2 Humble Hawksbill: 
+- ROS 2 Foxy Fitxroy or ROS 2 Humble Hawksbill:
   - [Foxy on Ubuntu 20.04](https://docs.ros.org/en/foxy/Installation/Linux-Install-Debians.html)
   - [Humble on Ubuntu 22.04](https://docs.ros.org/en/humble/Installation/Linux-Install-Debians.html)
 
 ### Build the package
 
-The **zed_ros2_wrapper** is a [colcon](http://design.ros2.org/articles/build_tool.html) package. 
+The **zed_ros2_wrapper** is a [colcon](http://design.ros2.org/articles/build_tool.html) package.
 
-> **Note:** If you haven’t set up your colcon workspace yet, please follow this short [tutorial](https://index.ros.org/doc/ros2/Tutorials/Colcon-Tutorial/). 
+> **Note:** If you haven’t set up your colcon workspace yet, please follow this short [tutorial](https://index.ros.org/doc/ros2/Tutorials/Colcon-Tutorial/).
 
 To install the **zed_ros2_wrapper**, open a bash terminal, clone the package from Github, and build it:
 
@@ -57,7 +57,7 @@ source ~/.bashrc
 ```
 
 > **Note:** If `rosdep` is missing you can install it with:
-> 
+>
 >   `sudo apt-get install python3-rosdep python3-rosinstall-generator python3-vcstool python3-rosinstall build-essential`
 
 > **Note:** When using the ZED ROS 2 Wrapper on an NVIDIA Jetson with JP6 GA, it is possible that you get the following error when building the package for the first time
@@ -70,7 +70,7 @@ source ~/.bashrc
 > ```
 >
 > You can fix the problem by installing the missing `nvidia-cuda-dev` package:
-> 
+>
 > `sudo apt install nvidia-cuda-dev`
 
 > **Note:** The option `--symlink-install` is very important, it allows to use symlinks instead of copying files to the ROS 2 folders during the installation, where possible. Each package in ROS 2 must be installed and all the files used by the nodes must be copied into the installation folders. Using symlinks allows you to modify them in your workspace, reflecting the modification during the next executions without needing to issue a new `colcon build` command. This is true only for all the files that don't need to be compiled (Python scripts, configurations, etc.).
@@ -115,7 +115,7 @@ Launch a standalone ZED ROS 2 node with simulated ZED data as input by using the
 ros2 launch zed_wrapper zed_camera.launch.py camera_model:=zedx sim_mode:=true
 ```
 
-Launch options: 
+Launch options:
 * [Mandatory] `camera_model`: indicates the model of the simulated camera. It's required that this parameter matches the model of the simulated camera. In most case it will be a ZED X, since the first versions of the simulation plugins that we released are simulating this type of device.
 * [Mandatory] `sim_mode`: start the ZED node in simulation mode if `true`.
 * [Optional] `use_sim_time`: force the node to wait for valid messages on the topic `/clock`, and so use the simulation clock as the time reference.
@@ -174,8 +174,8 @@ The services `toLL` and `fromLL` can be used to convert Latitude/Longitude coord
 
 ### 2D mode
 
-For robots moving on a planar surface, it is possible to activate the "2D mode" (parameter `pos_tracking/two_d_mode` in `common.yaml`). 
-The value of the coordinate Z for odometry and pose will have a fixed value (parameter `pos_tracking/fixed_z_value` in `common.yaml`). 
+For robots moving on a planar surface, it is possible to activate the "2D mode" (parameter `pos_tracking/two_d_mode` in `common.yaml`).
+The value of the coordinate Z for odometry and pose will have a fixed value (parameter `pos_tracking/fixed_z_value` in `common.yaml`).
 Roll, Pitch, and the relative velocities will be fixed to zero.
 
 ## Examples and Tutorials
@@ -200,7 +200,7 @@ See the [`zed-ros2-examples` repository](https://github.com/stereolabs/zed-ros2-
 To update the repository to the latest release, use the following command that will retrieve the latest commits of `zed-ros2-wrapper` and of all the submodules:
 
 ```bash
-git checkout master # if you are not on the main branch  
+git checkout master # if you are not on the main branch
 git pull --recurse-submodules # update recursively all the submodules
 ```
 

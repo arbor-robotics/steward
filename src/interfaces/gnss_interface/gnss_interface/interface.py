@@ -45,8 +45,6 @@ class InterfaceNode(Node):
         msg.pose.pose.position.x = ego_x
         msg.pose.pose.position.y = ego_y
 
-        
-
     def checkGnssMessages(self):
 
         if self.ser.closed:

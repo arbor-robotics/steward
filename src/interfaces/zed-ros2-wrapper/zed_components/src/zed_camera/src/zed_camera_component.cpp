@@ -3594,7 +3594,7 @@ void ZedCamera::initPublishers()
     //     << mPubDisparity->get_topic_name());
 #ifndef FOUND_FOXY
     mPubCloud = point_cloud_transport::create_publisher(
-      this->shared_from_this(), 
+      this->shared_from_this(),
       pointcloud_topic, mQos.get_rmw_qos_profile(), mPubOpt);
       // RCLCPP_INFO_STREAM(
       // get_logger(),
@@ -3605,7 +3605,7 @@ void ZedCamera::initPublishers()
     RCLCPP_INFO_STREAM(
       get_logger(),
       "Advertised on topic: " << mPubCloud->get_topic_name());
-#endif    
+#endif
     // <---- Depth publishers
 
     // ----> Pos Tracking
