@@ -75,10 +75,10 @@ v4.0.8
 - Force `grab_resolution` to `HD1080` in simulation
 - Removed the `general.zed_id` parameter. Always use `general.serial_number` to distinguish between different cameras in a multi-camera configuration.
 - The multi-camera example has been updated to match the new TF configuration
-- The old launch files are now obsolete: 'ros2 launch zed_wrapper <camera_model>.launch.py' is replaced by 'ros2 
+- The old launch files are now obsolete: 'ros2 launch zed_wrapper <camera_model>.launch.py' is replaced by 'ros2
   launch zed_wrapper zed_camera.launch.py camera_model:=<camera_model>'
-- The reference link for positional tracking is no longer 'base_link' but `<camera_name>_camera_link`. 
-  This will allow an easier ZED integration in existing robot configuration because the transform `base_link` -> `camera_link` 
+- The reference link for positional tracking is no longer 'base_link' but `<camera_name>_camera_link`.
+  This will allow an easier ZED integration in existing robot configuration because the transform `base_link` -> `camera_link`
   is no longer published by the ZED ROS2 Wrapper. Thanks to @SteveMacenski for the advice
   - Removed `parent` and `origin` parameters from `zed_macro.urdf.xacro`
   - Removed launch argument `cam_pose` from `zed_camera.launch.py`
@@ -97,7 +97,7 @@ v4.0.5
 - `ULTRA` is the new default value for `depth.depth_mode` (better performance for odometry and positional tracking)
 - Added resolution `HD1080` for ZED X
 - Fix issue with Body Tracking start/stop by service call. Now Body Tracking can be restarted multiple times
-- Fix depth grab performance by removing a [not required `PNG Write` call](https://github.com/stereolabs/zed-ros2-wrapper/pull/164). Thank you Esteban Zamora @ezamoraa 
+- Fix depth grab performance by removing a [not required `PNG Write` call](https://github.com/stereolabs/zed-ros2-wrapper/pull/164). Thank you Esteban Zamora @ezamoraa
 - Fix bug with `general.pub_resolution` value, not allowing to select the correct data publish resolution
 - Added new launch parameter `ros_params_override_path` to provide the path to a custom YAML file to override the parameters of the ZED Node without modifying the original files in the `zed_wrapper/config` folder. Thank you David Lu @MetroRobots
 
@@ -207,7 +207,7 @@ v4.0.0
   - Added node parameter `general.pub_resolution` used to reduce node computation and message bandwidth.
 
     - Available output resolutions: `HD2K`, `HD1080`, `HD720`, `MEDIUM`, `VGA`. `MEDIUM` is an optimized output resolution to maximize throughput and minimize processing costs.
-  
+
   - Removed node parameters `video.img_downsample_factor` and `depth.depth_downsample_factor`. Use the new parameter `general.pub_resolution` instead.
   - Change `general.grab_resolution` and `general.pub_resolution` from integer to string.
   - Added new `LOW` value for `general.pub_resolution` (half the `MEDIUM` output resolution).
@@ -230,7 +230,7 @@ v4.0.0
     - Removed the workaround for empty `svo_path` launch parameter values thanks to `TextSubstitution`.
     - Modify the "display" launch files in [zed-ros2-examples](https://github.com/stereolabs/zed-ros2-examples) to match the new configuration.
     - Added `publish_tf` and `publish_map_tf` launch parameters useful for multi-camera configuretion or external odometry fusion.
-  
+
   - Change LICENSE to Apache 2.0 to match ROS2 license.
 
 v3.8.x

@@ -3,7 +3,7 @@
 ---
 /**:
     ros__parameters:
-        general:            
+        general:
             camera_model: 'zed2'
             camera_name: 'zed2' # usually overwritten by launch file
             grab_resolution: 'HD720' # The native camera grab resolution. 'HD2K', 'HD1080', 'HD720', 'VGA', 'AUTO'
@@ -12,4 +12,3 @@
         depth:
             min_depth: 0.3 # Min: 0.3, Max: 3.0
             max_depth: 15.0 # Max: 40.0
-

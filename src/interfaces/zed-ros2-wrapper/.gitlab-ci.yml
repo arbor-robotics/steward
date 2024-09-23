@@ -180,7 +180,7 @@ variables:
 #################
 
 humble_u22_cu117_build:
-  stage: build  
+  stage: build
   #image: stereolabs/ci-compiler:ubuntu22.04-cuda11.7-tensorrt8.4.2-ros2-humble
   image: myzhar/test:ubuntu22.04-cuda11.7-tensorrt8.4.2-ros2-humble
   tags: *linux_docker_builder_target_definition
@@ -202,7 +202,7 @@ humble_l4t35_1_build:
     name: *linux_artifacts_naming_definition
     paths: *artifacts_files_definition
     expire_in: *artifacts_expire_in_definition
-  when: on_success  
+  when: on_success
 
 ######################
 #     Test script    #
@@ -232,7 +232,7 @@ humble_l4t35_1_build:
 
 .setup_sdk_u22_cu117_web_before_script:
   before_script: &setup_sdk_u22_cu117_web_before_script_definition
-    - sudo chmod +x .ci/download_and_install_sdk.sh 
+    - sudo chmod +x .ci/download_and_install_sdk.sh
     - ./.ci/download_and_install_sdk.sh 22 11 7 3 8
     # clean previous artifacts
     - rm -rf ../ros2_ws
@@ -264,7 +264,7 @@ unit_test_ros2_humble_u22_cu117:
   #  paths: *test_artifacts_files_definition
   #  expire_in: *artifacts_expire_in_definition
   #  reports: *test_artifacts_report_files_definition
-  needs: 
+  needs:
     - job: humble_u22_cu117_build
       artifacts: true
   when: manual
@@ -275,13 +275,13 @@ unit_test_ros2_humble_u22_cu117:
 
 # ROS2 Humble U22 Docker Image DEVEL - use the current branch source to build the wrapper
 ros2_humble_u22_docker_image_dev:
-  needs: 
+  needs:
   - job: humble_u22_cu117_build
   stage: deploy_docker
   image: docker
-  services: 
+  services:
     - docker:dind
-  script: 
+  script:
     - docker login -u $CI_REGISTRY_USER_WALT -p $CI_REGISTRY_PASSWORD_WALT
     - cd docker
     - IMG_TAG=${CI_PROJECT_NAME}_u22_cuda121_humble_${CI_COMMIT_BRANCH}
@@ -296,13 +296,13 @@ ros2_humble_u22_docker_image_dev:
 
 # ROS2 Humble L4T Docker Image DEVEL - use the current branch source to build the wrapper
 ros2_humble_l4t_docker_image_dev:
-  needs: 
+  needs:
   - job: humble_l4t35_1_build
   stage: deploy_docker
   image: docker
-  services: 
+  services:
     - docker:dind
-  script: 
+  script:
     - docker login -u $CI_REGISTRY_USER_WALT -p $CI_REGISTRY_PASSWORD_WALT
     - cd docker
     - IMG_TAG=${CI_PROJECT_NAME}_l4t35_4_humble_${CI_COMMIT_BRANCH}
@@ -322,14 +322,14 @@ ros2_humble_l4t_docker_image_dev:
 
   # Update Github master branch
 github_push:
-  needs: 
+  needs:
   - job: humble_u22_cu117_build
     artifacts: false
   - job: humble_l4t35_1_build
     artifacts: false
   stage: deploy
   image: alpine
-  script: 
+  script:
     - apk add --no-cache bash git
     - git config --global user.email "support@stereolabs.com"
     - git config --global user.name "Stereolabs"
@@ -347,4 +347,3 @@ github_push:
   only:
     - master
   allow_failure: true
-

@@ -13,8 +13,8 @@ echo 'DDS middleware: ' $RMW_IMPLEMENTATION
 echo 'ROS 2 Workspaces:' $COLCON_PREFIX_PATH
 echo 'ROS 2 Domain ID:' $ROS_DOMAIN_ID
 echo 'Machine IPs:' $ROS_IP
-echo "---"  
+echo "---"
 echo 'Available ZED packages:'
 ros2 pkg list | grep zed
-echo "---------------------"    
+echo "---------------------"
 exec "$@"
