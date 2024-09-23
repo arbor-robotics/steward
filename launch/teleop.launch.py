@@ -220,6 +220,9 @@ def generate_launch_description():
     mvp_controller = Node(package="motion_control", executable="mvp_controller")
 
     gnss = Node(package="gnss_interface", executable="interface")
+    rosbridge_server = Node(
+        package="rosbridge_server", executable="rosbridge_websocket"
+    )
     warthog_bridge = Node(package="web_bridge", executable="warthog_bridge")
 
     return LaunchDescription(
@@ -232,6 +235,7 @@ def generate_launch_description():
             # INTERFACES
             OpaqueFunction(function=zed_launch_setup),  # camera
             gnss,
+            rosbridge_server,
             warthog_bridge,
             # PERCEPTION
             # PLANNING

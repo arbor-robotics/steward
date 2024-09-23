@@ -83,6 +83,7 @@ class WarthogBridge(Node):
 
         self.imu_pub = self.create_publisher(Imu, "/imu/warthog", 10)
 
+
     def cmdVelCb(self, msg: Twist):
 
         # Form a Rosbridge cmd_vel message to publish
@@ -208,6 +209,9 @@ class WarthogBridge(Node):
         try:
             self.ws.connect("ws://192.168.131.1:9090", timeout=0.1)
             self.get_logger().info("Connected!")
+            self.subscribeToWarthogTopic("/imu/data")
+            self.subscribeToWarthogTopic("/odometry/filtered")
+            self.subscribeToDiagnostics()
 
         except ConnectionRefusedError as e:
             self.get_logger().warning(
@@ -229,6 +233,7 @@ class WarthogBridge(Node):
                 # We've received a message from a subscription
                 if msg["topic"] == "/diagnostics_agg":
                     # Process diagnostics
+
                     self.republishDiagnostics(msg["msg"])
 
                 elif msg["topic"] == "/odometry/filtered":
@@ -349,6 +354,3 @@ def main():
     node.ws.close()
     node.destroy_node()
     rclpy.shutdown()
-
-    # Spin until both loops complete or are cancelled
-    # asyncio.get_event_loop().run_until_complete(future)
