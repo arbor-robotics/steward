@@ -224,6 +224,7 @@ def generate_launch_description():
         package="rosbridge_server", executable="rosbridge_websocket"
     )
     warthog_bridge = Node(package="web_bridge", executable="warthog_bridge")
+    health_monitor = Node(package="diagnostics", executable="monitor")
 
     return LaunchDescription(
         [
@@ -235,6 +236,7 @@ def generate_launch_description():
             # INTERFACES
             OpaqueFunction(function=zed_launch_setup),  # camera
             gnss,
+            health_monitor,
             rosbridge_server,
             warthog_bridge,
             # PERCEPTION
