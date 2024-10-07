@@ -214,7 +214,11 @@ class WarthogBridge(Node):
 
         except ConnectionRefusedError as e:
             self.get_logger().warning(
-                "Couldn't connect to Warthog Rosbridge Server. Retrying."
+                "Connection to Warthog Rosbridge Server refused. Retrying."
+            )
+        except TimeoutError as e:
+            self.get_logger().warning(
+                "Connection to Warthog Rosbridge Server timed out. Retrying."
             )
 
     def checkMessages(self):
