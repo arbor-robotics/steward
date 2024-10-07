@@ -8,6 +8,8 @@
   <maintainer email="w@heit.mn">Will Heitman</maintainer>
   <license>MIT</license>
 
+  <depend>steward_msgs</depend>
+
   <export>
     <build_type>ament_python</build_type>
   </export>
