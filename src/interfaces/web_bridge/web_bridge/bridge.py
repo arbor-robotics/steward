@@ -71,8 +71,8 @@ class WebsocketBridge(Node):
         print(f"{self.throttle} -> {throttle_byte}")
         print(f"{self.turn} -> {turn_byte}")
 
-        if throttle_byte > 256:
-            throttle_byte = 256
+        if throttle_byte > 255:
+            throttle_byte = 255
             self.get_logger().warning(
                 f"Throttle byte {throttle_byte} was too big. Capping to 256."
             )
@@ -81,8 +81,8 @@ class WebsocketBridge(Node):
             self.get_logger().warning(
                 f"Throttle byte {throttle_byte} was too small. Capping to 0."
             )
-        if turn_byte > 256:
-            turn_byte = 256
+        if turn_byte > 255:
+            turn_byte = 255
             self.get_logger().warning(
                 f"Turn byte {turn_byte} was too big. Capping to 256."
             )

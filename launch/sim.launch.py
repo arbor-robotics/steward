@@ -70,7 +70,7 @@ def generate_launch_description():
         package="rosbridge_server", executable="rosbridge_websocket"
     )
     warthog_bridge = Node(package="web_bridge", executable="warthog_bridge")
-    web_bridge = Node(package="web_bridge", executable="bridge")
+    sim_bridge = Node(package="web_bridge", executable="bridge")
     health_monitor = Node(package="health", executable="monitor")
 
     return LaunchDescription(
@@ -79,7 +79,7 @@ def generate_launch_description():
             # gnss,
             rosbridge_server,
             # warthog_bridge,
-            web_bridge,
+            sim_bridge,
             # PERCEPTION
             # PLANNING
             # forest_planner,

@@ -13,7 +13,7 @@ from enum import IntEnum
 # ROS2 message definitions
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
 from std_msgs.msg import Header
-from steward_msgs.msg import SystemwideStatus
+from steward_msgs.msg import FailedChecks, HealthCheck, SystemwideStatus
 
 
 # class SystemwideStatus:
@@ -70,6 +70,13 @@ class HealthMonitor(Node):
 
         self.create_subscription(DiagnosticStatus, "/diagnostics", self.statusCb, 1)
         self.agg_pub = self.create_publisher(DiagnosticArray, "/diagnostics/agg", 1)
+        self.system_status_pub = self.create_publisher(
+            SystemwideStatus, "/health/system_wide_status", 1
+        )
+
+        self.failed_checks_pub = self.create_publisher(
+            FailedChecks, "/health/failed_checks", 1
+        )
 
         self.create_timer(0.02, self.aggregate)
 
@@ -81,12 +88,28 @@ class HealthMonitor(Node):
 
     def aggregate(self):
         systemwide_status = SystemwideStatus.HEALTHY
+        failed_checks = []
 
         for check in self.checks:
-            if check.triggered and check.trigger_status > systemwide_status:
+            if (
+                check.triggered or check.isStale
+            ) and check.trigger_status > systemwide_status:
                 systemwide_status = check.trigger_status
 
-        self.get_logger().info(str(systemwide_status))
+                check_msg = HealthCheck()
+                check_msg.code = check.code
+                check_msg.message = check.message
+                check_msg.trigger_status = SystemwideStatus()
+                check_msg.trigger_status.level = check.trigger_status
+                failed_checks.append(check_msg)
+
+        msg = SystemwideStatus()
+        msg.level = systemwide_status
+        self.system_status_pub.publish(msg)
+
+        failed_checks_msg = FailedChecks()
+        failed_checks_msg.checks = failed_checks
+        self.failed_checks_pub.publish(failed_checks_msg)
 
 
 def main(args=None):
