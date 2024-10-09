@@ -1,4 +1,7 @@
+import array
 import asyncio
+import math
+import sys
 from websockets.asyncio.server import serve, Server, ServerConnection
 from websockets.exceptions import ConnectionClosedError
 
@@ -16,7 +19,8 @@ from random import randbytes, randint
 
 # ROS message types
 from geometry_msgs.msg import Twist
-from sensor_msgs.msg import Image, CompressedImage
+from sensor_msgs.msg import Image, CompressedImage, PointCloud2, PointField
+from std_msgs.msg import Header
 
 
 class MessageType:
@@ -24,6 +28,113 @@ class MessageType:
     SUBSCRIBE = 0x01
     TELEOP = 0x02
     POINTCLOUD = 0x03
+
+
+# mappings between PointField types and numpy types
+type_mappings = [
+    (PointField.INT8, np.dtype("int8")),
+    (PointField.UINT8, np.dtype("uint8")),
+    (PointField.INT16, np.dtype("int16")),
+    (PointField.UINT16, np.dtype("uint16")),
+    (PointField.INT32, np.dtype("int32")),
+    (PointField.UINT32, np.dtype("uint32")),
+    (PointField.FLOAT32, np.dtype("float32")),
+    (PointField.FLOAT64, np.dtype("float64")),
+]
+pftype_to_nptype = dict(type_mappings)
+nptype_to_pftype = dict((nptype, pftype) for pftype, nptype in type_mappings)
+
+
+def numpyToPointCloud(points, parent_frame, stamp):
+    """Creates a point cloud message. Original:https://gist.github.com/pgorczak/5c717baa44479fa064eb8d33ea4587e0
+    Args:
+        points: Nx3 array of xyz positions (m)
+        parent_frame: frame in which the point cloud is defined
+    Returns:
+        sensor_msgs/PointCloud2 message
+    """
+    ros_dtype = PointField.FLOAT32
+    dtype = np.float32
+    itemsize = np.dtype(dtype).itemsize
+
+    data = points.astype(dtype).tobytes()
+
+    fields = [
+        PointField(name=n, offset=i * itemsize, datatype=ros_dtype, count=1)
+        for i, n in enumerate("xyz")
+    ]
+
+    header = Header(frame_id=parent_frame, stamp=stamp)
+
+    return PointCloud2(
+        header=header,
+        height=1,
+        width=points.shape[0],
+        is_dense=False,
+        is_bigendian=False,
+        fields=fields,
+        point_step=(itemsize * 3),
+        row_step=(itemsize * 3 * points.shape[0]),
+        data=data,
+    )
+
+
+def dtype_to_fields(dtype):
+    """Convert a numpy record datatype into a list of PointFields."""
+    fields = []
+    for field_name in dtype.names:
+        np_field_type, field_offset = dtype.fields[field_name]
+        pf = PointField()
+        pf.name = field_name
+        if np_field_type.subdtype:
+            item_dtype, shape = np_field_type.subdtype
+            pf.count = int(np.prod(shape))
+            np_field_type = item_dtype
+        else:
+            pf.count = 1
+
+        pf.datatype = nptype_to_pftype[np_field_type]
+        pf.offset = field_offset
+        fields.append(pf)
+    return fields
+
+
+def array_to_pointcloud2(cloud_arr, stamp=None, frame_id=None):
+    """Converts a numpy record array to a sensor_msgs.msg.PointCloud2."""
+    # make it 2d (even if height will be 1)
+    cloud_arr = np.atleast_2d(cloud_arr)
+
+    cloud_msg = PointCloud2()
+
+    if stamp is not None:
+        cloud_msg.header.stamp = stamp
+    if frame_id is not None:
+        cloud_msg.header.frame_id = frame_id
+    cloud_msg.height = cloud_arr.shape[0]
+    cloud_msg.width = cloud_arr.shape[1]
+    cloud_msg.fields = dtype_to_fields(cloud_arr.dtype)
+    cloud_msg.is_bigendian = sys.byteorder != "little"
+    cloud_msg.point_step = cloud_arr.dtype.itemsize
+    cloud_msg.row_step = cloud_msg.point_step * cloud_arr.shape[1]
+    cloud_msg.is_dense = all(
+        [np.isfinite(cloud_arr[fname]).all() for fname in cloud_arr.dtype.names]
+    )
+
+    # The PointCloud2.data setter will create an array.array object for you if you don't
+    # provide it one directly. This causes very slow performance because it iterates
+    # over each byte in python.
+    # Here we create an array.array object using a memoryview, limiting copying and
+    # increasing performance.
+    memory_view = memoryview(cloud_arr)
+    if memory_view.nbytes > 0:
+        array_bytes = memory_view.cast("B")
+    else:
+        # Casting raises a TypeError if the array has no elements
+        array_bytes = b""
+    as_array = array.array("B")
+    as_array.frombytes(array_bytes)
+    cloud_msg.data = as_array
+    return cloud_msg
 
 
 class WebsocketBridge(Node):
@@ -43,6 +154,10 @@ class WebsocketBridge(Node):
         self.compressed_image_pub = self.create_publisher(
             CompressedImage, "/rgb/image_rect_color_compressed", 10
         )
+
+        self.depth_pcd_pub = self.create_publisher(
+            PointCloud2, "/depth_pcd", 10
+        )  # TODO: Alter topic to match ZED
 
         self.cmd_vel_sub = self.create_subscription(
             Twist, "/cmd_vel", self.cmdVelCb, 10
@@ -157,6 +272,52 @@ class WebsocketBridge(Node):
         """Not used. Declare ROS params here."""
         pass
 
+    def handlePointcloudBytes(self, message: bytes):
+
+        def bytesToTuple(b):
+            x_bytes = b[:2]
+            x = int.from_bytes(x_bytes, sys.byteorder, signed=True)
+
+            y_bytes = b[2:4]
+            y = int.from_bytes(y_bytes, sys.byteorder, signed=True)
+
+            z_bytes = b[4:]
+            z = int.from_bytes(z_bytes, sys.byteorder, signed=True)
+
+            # node.get_logger().info(f"{str(b)} -> {x}, {y}, {z}")
+
+            return (x, y, z)
+
+        point_idx = 0
+        point_count = math.floor((len(message) - 1) / 6)
+
+        # for byte in message:
+
+        # node.get_logger().info(str(byte))
+
+        points = []
+        for i in range(point_count):
+            point_bytes = message[(i * 6) + 1 : (i * 6) + 7]
+            points.append(bytesToTuple(point_bytes))
+
+        node.get_logger().info(
+            f"Received pcd with {len(message)} bytes ({point_count} points)"
+        )
+
+        points = np.asarray(points) / 100  # Convert back to meters!
+        # self.get_logger().info(
+        #     f"Shape: {points.shape}, dtype: {points.dtype}, names: {points.dtype.names}"
+        # )
+        # msg = array_to_pointcloud2(
+        #     points, stamp=self.get_clock().now().to_msg(), frame_id="base_link"
+        # )  # TODO: Change this to camra frame
+
+        msg = numpyToPointCloud(
+            points, "base_link", stamp=self.get_clock().now().to_msg()
+        )
+
+        self.depth_pcd_pub.publish(msg)
+
 
 import asyncio
 
@@ -198,8 +359,7 @@ async def handleConnection(connection: ServerConnection):
                     raise NotImplementedError
 
             elif message[0] == MessageType.POINTCLOUD:
-                # node.publishImageBytes(message[1:])
-                node.get_logger().info(f"Received pcd with {len(message)} bytes")
+                node.handlePointcloudBytes(message)
 
             else:
                 raise NotImplementedError(f"Received invalid Message Type {message[0]}")
