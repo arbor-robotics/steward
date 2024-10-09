@@ -23,6 +23,7 @@ class MessageType:
     IMAGE = 0x00
     SUBSCRIBE = 0x01
     TELEOP = 0x02
+    POINTCLOUD = 0x03
 
 
 class WebsocketBridge(Node):
@@ -195,6 +196,10 @@ async def handleConnection(connection: ServerConnection):
                     node.teleop_connections.append(connection)
                 else:
                     raise NotImplementedError
+
+            elif message[0] == MessageType.POINTCLOUD:
+                # node.publishImageBytes(message[1:])
+                node.get_logger().info(f"Received pcd with {len(message)} bytes")
 
             else:
                 raise NotImplementedError(f"Received invalid Message Type {message[0]}")
