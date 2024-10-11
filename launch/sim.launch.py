@@ -72,6 +72,7 @@ def generate_launch_description():
     warthog_bridge = Node(package="web_bridge", executable="warthog_bridge")
     sim_bridge = Node(package="web_bridge", executable="bridge")
     health_monitor = Node(package="health", executable="monitor")
+    occ_grid = Node(package="costmaps", executable="occupancy_grid_node")
 
     return LaunchDescription(
         [
@@ -85,6 +86,7 @@ def generate_launch_description():
             # forest_planner,
             # route_planner,
             # heightmap_publisher,
+            occ_grid,
             # CONTROL
             # mvp_controller,
             # SAFETY

@@ -18,6 +18,9 @@ setup(
     license="TODO: License declaration",  # See package.xml
     tests_require=["pytest"],
     entry_points={
-        "console_scripts": ["heightmap_publisher = mapping.heightmap_publisher:main"],
+        "console_scripts": [
+            "heightmap_publisher = mapping.heightmap_publisher:main",
+            "manager = mapping.manager:main",
+        ],
     },
 )

@@ -126,7 +126,7 @@ class OccupancyGridNode(Node):
 
     def pcdCb(self, msg: PointCloud2):
         arr = pointcloud2_to_array(msg)
-        self.get_logger().info(f"Got point cloud with shape {arr.shape}: {arr[0]}!")
+        # self.get_logger().info(f"Got point cloud with shape {arr.shape}: {arr[0]}!")
 
         RES = 0.2  # meters per pixel
         ORIGIN_X_PX = 40
@@ -140,8 +140,10 @@ class OccupancyGridNode(Node):
         arr /= RES
         arr = arr.astype(np.int8)
 
-        # ONLY CONSIDER X & Y
-        # TODO: Consider z
+        # TODO: Perform PROPER plane segmentation
+        # For now, we'll naively check height
+        HEIGHT_CUTOFF = 0.3
+        arr = arr[arr[:, 2] > 0.3]
         arr = arr[:, :2]
 
         # Discard indices outside of bounds
@@ -163,7 +165,7 @@ class OccupancyGridNode(Node):
         # fig, (ax1, ax2) = plt.subplots(1, 2)
         # ax1.scatter(arr[:, 0], arr[:, 1])
 
-        self.get_logger().info(str(arr))
+        # self.get_logger().info(str(arr))
 
         origin = Point(x=-ORIGIN_X_M, y=-ORIGIN_Y_M)
 
