@@ -18,6 +18,7 @@ import cv2
 from random import randbytes, randint
 
 # ROS message types
+from diagnostic_msgs.msg import DiagnosticStatus, KeyValue
 from geometry_msgs.msg import Twist
 from sensor_msgs.msg import Image, CompressedImage, PointCloud2, PointField
 from std_msgs.msg import Header
@@ -139,7 +140,7 @@ def array_to_pointcloud2(cloud_arr, stamp=None, frame_id=None):
 
 class WebsocketBridge(Node):
     def __init__(self):
-        super().__init__("websocket_bridge")
+        super().__init__("sim_bridge")
 
         self.bridge = CvBridge()
 
@@ -159,6 +160,8 @@ class WebsocketBridge(Node):
             PointCloud2, "/depth_pcd", 10
         )  # TODO: Alter topic to match ZED
 
+        self.diagnostic_pub = self.create_publisher(DiagnosticStatus, "/diagnostics", 1)
+
         self.cmd_vel_sub = self.create_subscription(
             Twist, "/cmd_vel", self.cmdVelCb, 10
         )
@@ -168,9 +171,28 @@ class WebsocketBridge(Node):
         self.create_timer(0.1, self.sendWsTwist)
         self.teleop_connections: list[ServerConnection] = []
 
+        self.connected_to_client = False
+
+        self.create_timer(0.1, self.publishStatus)
+
+    def publishStatus(self):
+
+        # self.get_logger().info("PUBLISHING STATUS")
+
+        if self.connected_to_client:
+            level = DiagnosticStatus.OK
+            msg = "Connected."
+
+        else:
+            level = DiagnosticStatus.ERROR
+            msg = "Not connected."
+
+        status_msg = DiagnosticStatus(level=level, name=self.get_name(), message=msg)
+
+        self.diagnostic_pub.publish(status_msg)
+
     async def sendWsTwist(self):
         if len(self.teleop_connections) < 1:
-            print("no connections")
             return
 
         # message = [MessageType.TELEOP] + randbytes(2)
@@ -300,9 +322,9 @@ class WebsocketBridge(Node):
             point_bytes = message[(i * 6) + 1 : (i * 6) + 7]
             points.append(bytesToTuple(point_bytes))
 
-        node.get_logger().info(
-            f"Received pcd with {len(message)} bytes ({point_count} points)"
-        )
+        # node.get_logger().info(
+        #     f"Received pcd with {len(message)} bytes ({point_count} points)"
+        # )
 
         points = np.asarray(points) / 100  # Convert back to meters!
         # self.get_logger().info(
@@ -333,6 +355,8 @@ async def handleConnection(connection: ServerConnection):
     node.get_logger().info(
         f"Opened new connection to {connection.remote_address[0]} with ID {connection.id}"
     )
+
+    node.connected_to_client = True
     try:
         async for message in connection:
             # Check the first byte, which is the message type
@@ -364,13 +388,16 @@ async def handleConnection(connection: ServerConnection):
             else:
                 raise NotImplementedError(f"Received invalid Message Type {message[0]}")
 
-            # message.
             await connection.send(message)
 
     except ConnectionClosedError as e:
         node.get_logger().warning(
             f"Connection {connection.id} from {connection.remote_address[0]} closed unexpectedly."
         )
+
+    finally:
+        node.get_logger().info(f"KISS connection ended.")
+        node.connected_to_client = False
 
 
 async def spinWebsocketServer():

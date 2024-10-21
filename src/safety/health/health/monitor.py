@@ -14,7 +14,7 @@ from enum import IntEnum
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
 from std_msgs.msg import Header
 from steward_msgs.msg import FailedChecks, HealthCheck, SystemwideStatus
-
+from std_msgs.msg import Empty
 
 # class SystemwideStatus:
 #     HEALTHY = 0
@@ -31,6 +31,7 @@ class Check:
         period_sec: float,
         triggers: SystemwideStatus,
         message: str,
+        max_status: bytes = DiagnosticStatus.WARN,
     ):
         self.code = code
         self.inspects = inspects
@@ -39,6 +40,10 @@ class Check:
         self.message = message
         self.last_ping = -1
         self.triggered = True
+
+        # Status levels greater than this will cause the check to fail
+        # See the values at https://docs.ros.org/en/noetic/api/diagnostic_msgs/html/msg/DiagnosticStatus.html
+        self.max_status = max_status
 
     def isStale(self):
         return time() - self.last_ping > self.period_sec
@@ -61,12 +66,15 @@ class HealthMonitor(Node):
         self.checks = [
             Check(
                 "BRIDGE_FAILURE",
-                inspects=["bridge/steward", "bridge/warthog"],
+                inspects=["sim_bridge", "bridge/warthog"],
                 period_sec=0.2,
                 triggers=SystemwideStatus.OUT_OF_SERVICE,
                 message="Steward is unable to connect to the Warthog or the simulator and cannot operate.",
             )
         ]
+
+        self.statuses = {}
+        self.heartbeat_times = {}
 
         self.create_subscription(DiagnosticStatus, "/diagnostics", self.statusCb, 1)
         self.agg_pub = self.create_publisher(DiagnosticArray, "/diagnostics/agg", 1)
@@ -78,10 +86,18 @@ class HealthMonitor(Node):
             FailedChecks, "/health/failed_checks", 1
         )
 
+        self.heartbeat_pub = self.create_publisher(Empty, "/hb/global", 1)
+
         self.create_timer(0.02, self.aggregate)
 
-    def statusCb(msg: DiagnosticStatus):
-        pass
+        self.create_timer(0.5, self.publishGlobalHeartbeat)
+
+    def publishGlobalHeartbeat(self):
+        self.heartbeat_pub.publish(Empty())
+
+    def statusCb(self, msg: DiagnosticStatus):
+        self.statuses[msg.name] = msg
+        self.heartbeat_times[msg.name] = time()
 
     def setUpParameters(self):
         pass
@@ -91,9 +107,31 @@ class HealthMonitor(Node):
         failed_checks = []
 
         for check in self.checks:
-            if (
-                check.triggered or check.isStale
-            ) and check.trigger_status > systemwide_status:
+
+            # Current behavior: At least one node in the "inspects"
+            # list needs to be both OK and not stale
+            is_stale = True
+            triggered = True
+            for node_name in check.inspects:
+
+                # Have we received a status at all?
+                try:
+                    status: DiagnosticStatus = self.statuses[node_name]
+                except KeyError:
+                    continue  # If not, skip
+
+                # Is it current (not stale)?
+                if time() - self.heartbeat_times[node_name] < check.period_sec:
+                    is_stale = False
+
+                    if status.level <= check.max_status:
+                        triggered = False
+
+                self.get_logger().info(
+                    f"{status.name}: stale? {is_stale}, triggered? {triggered}"
+                )
+
+            if (triggered or is_stale) and check.trigger_status > systemwide_status:
                 systemwide_status = check.trigger_status
 
                 check_msg = HealthCheck()

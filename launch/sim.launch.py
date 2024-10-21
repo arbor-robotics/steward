@@ -70,7 +70,7 @@ def generate_launch_description():
         package="rosbridge_server", executable="rosbridge_websocket"
     )
     warthog_bridge = Node(package="web_bridge", executable="warthog_bridge")
-    sim_bridge = Node(package="web_bridge", executable="bridge")
+    sim_bridge = Node(package="web_bridge", executable="sim_bridge")
     health_monitor = Node(package="health", executable="monitor")
     occ_grid = Node(package="costmaps", executable="occupancy_grid_node")
 
@@ -90,7 +90,7 @@ def generate_launch_description():
             # CONTROL
             # mvp_controller,
             # SAFETY
-            health_monitor,
+            # health_monitor,
             # MISC.
             joint_state_publisher,
             pose_to_transform_broadcaster,
