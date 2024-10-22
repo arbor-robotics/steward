@@ -4,9 +4,9 @@ from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.actions import IncludeLaunchDescription, SetEnvironmentVariable
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
-from launch.actions import ExecuteProcess
+from launch.actions import ExecuteProcess, OpaqueFunction
 from launch.conditions import IfCondition
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, Command, TextSubstitution
 from launch_ros.actions import Node
 
 from ament_index_python import get_package_share_directory
@@ -25,7 +25,8 @@ def generate_launch_description():
     map_directory = path.join(steward_root, "data", "maps", "schenley")
 
     doc = xacro.process_file(
-        path.join(steward_root, "config", xacro_name), mappings={"mesh_path": mesh_path}
+        path.join(steward_root, "../config", xacro_name),
+        mappings={"mesh_path": mesh_path},
     )
     robot_desc = doc.toprettyxml(indent="   ")
 
@@ -48,14 +49,6 @@ def generate_launch_description():
         ],
     )
 
-    rviz = Node(
-        package="rviz2",
-        namespace="",
-        executable="rviz2",
-        name="rviz2",
-        # arguments=['-d' + f'{steward_root}/config/steward.rviz']
-    )
-
     joint_state_publisher = Node(
         package="joint_state_publisher", executable="joint_state_publisher"
     )
@@ -72,15 +65,35 @@ def generate_launch_description():
     route_planner = Node(package="route_planning", executable="route_planner")
     mvp_controller = Node(package="motion_control", executable="mvp_controller")
 
+    gnss = Node(package="gnss_interface", executable="interface")
+    rosbridge_server = Node(
+        package="rosbridge_server", executable="rosbridge_websocket"
+    )
+    warthog_bridge = Node(package="web_bridge", executable="warthog_bridge")
+    sim_bridge = Node(package="web_bridge", executable="sim_bridge")
+    health_monitor = Node(package="health", executable="monitor")
+    occ_grid = Node(package="costmaps", executable="occupancy_grid_node")
+
     return LaunchDescription(
         [
-            forest_planner,
-            route_planner,
-            mvp_controller,
-            heightmap_publisher,
+            # INTERFACES
+            # gnss,
+            rosbridge_server,
+            # warthog_bridge,
+            sim_bridge,
+            # PERCEPTION
+            # PLANNING
+            # forest_planner,
+            # route_planner,
+            # heightmap_publisher,
+            occ_grid,
+            # CONTROL
+            # mvp_controller,
+            # SAFETY
+            health_monitor,
+            # MISC.
             joint_state_publisher,
             pose_to_transform_broadcaster,
             urdf_publisher,
-            # rviz,
         ]
     )

@@ -19,7 +19,7 @@ setup(
     tests_require=["pytest"],
     entry_points={
         "console_scripts": [
-            "bridge = web_bridge.bridge:main",
+            "sim_bridge = web_bridge.sim_bridge:main",
             "test_client = web_bridge.test_client:main",
             "warthog_bridge = web_bridge.warthog_bridge:main",
         ],

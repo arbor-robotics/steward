@@ -23,6 +23,9 @@ callouts:
   new:
     title: New
     color: green
+  example:
+    title: Example
+    color: grey-dk
 
 aux_links:
   "Github Repo":
