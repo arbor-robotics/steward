@@ -94,24 +94,21 @@ def pointcloud2_to_array(cloud_msg, squeeze=True):
     dtype_list = fields_to_dtype(cloud_msg.fields, cloud_msg.point_step)
 
     # parse the cloud into an array
-    # cloud_arr = np.frombuffer(cloud_msg.data, dtype_list)
-    cloud_arr = np.frombuffer(cloud_msg.data, np.float32)
+    cloud_arr = np.frombuffer(cloud_msg.data, dtype_list)
 
-    # # remove the dummy fields that were added
-    # cloud_arr = cloud_arr[
-    #     [
-    #         fname
-    #         for fname, _type in dtype_list
-    #         if not (fname[: len(DUMMY_FIELD_PREFIX)] == DUMMY_FIELD_PREFIX)
-    #     ]
-    # ]
+    # remove the dummy fields that were added
+    cloud_arr = cloud_arr[
+        [
+            fname
+            for fname, _type in dtype_list
+            if not (fname[: len(DUMMY_FIELD_PREFIX)] == DUMMY_FIELD_PREFIX)
+        ]
+    ]
 
-    # if squeeze and cloud_msg.height == 1:
-    #     return np.reshape(cloud_arr, (cloud_msg.width,))
-    # else:
-    #     return np.reshape(cloud_arr, (cloud_msg.height, cloud_msg.width))
-
-    return np.reshape(cloud_arr, (-1, 3))
+    if squeeze and cloud_msg.height == 1:
+        return np.reshape(cloud_arr, (cloud_msg.width,))
+    else:
+        return np.reshape(cloud_arr, (cloud_msg.height, cloud_msg.width))
 
 
 class OccupancyGridNode(Node):
@@ -120,13 +117,27 @@ class OccupancyGridNode(Node):
 
         self.setUpParameters()
 
-        self.create_subscription(PointCloud2, "/depth_pcd", self.pcdCb, 1)
+        self.create_subscription(
+            PointCloud2, "/zed/point_cloud/cloud_registered", self.pcdCb, 1
+        )
 
         self.occ_grid_pub = self.create_publisher(OccupancyGrid, "/cost/occupancy", 1)
 
     def pcdCb(self, msg: PointCloud2):
         arr = pointcloud2_to_array(msg)
-        self.get_logger().info(f"Got point cloud with shape {arr.shape}: {arr[0]}!")
+
+        # Remove NaNs (applicable to ZED)
+        # if arr.shape[1] > 3:
+
+        # self.get_logger().info(f"Got point cloud with shape {arr.shape}: {arr.dtype}!")
+
+        counter = 0
+        for idx, point in np.ndenumerate(arr):
+            if counter > 10:
+                break
+            else:
+                counter += 1
+            self.get_logger().info(str(point))
 
         RES = 0.2  # meters per pixel
         ORIGIN_X_PX = 40
