@@ -90,7 +90,7 @@ def generate_launch_description():
             # CONTROL
             # mvp_controller,
             # SAFETY
-            # health_monitor,
+            health_monitor,
             # MISC.
             joint_state_publisher,
             pose_to_transform_broadcaster,

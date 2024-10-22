@@ -127,10 +127,6 @@ class HealthMonitor(Node):
                     if status.level <= check.max_status:
                         triggered = False
 
-                self.get_logger().info(
-                    f"{status.name}: stale? {is_stale}, triggered? {triggered}"
-                )
-
             if (triggered or is_stale) and check.trigger_status > systemwide_status:
                 systemwide_status = check.trigger_status
 
