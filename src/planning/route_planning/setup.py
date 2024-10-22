@@ -18,6 +18,9 @@ setup(
     license="TODO: License declaration",  # See package.xml
     tests_require=["pytest"],
     entry_points={
-        "console_scripts": ["route_planner = route_planning.route_planner:main"],
+        "console_scripts": [
+            "route_planner = route_planning.route_planner:main",
+            "demo_waypoint_follower = route_planning.demo_waypoint_follower:main",
+        ],
     },
 )

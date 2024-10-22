@@ -16,12 +16,13 @@ from cv_bridge import CvBridge
 from PIL import Image as PILImage
 import cv2
 from random import randbytes, randint
+import struct  # for byte <-> float conversions
 
 # ROS message types
 from diagnostic_msgs.msg import DiagnosticStatus, KeyValue
 from geometry_msgs.msg import Twist, PoseWithCovarianceStamped
 from sensor_msgs.msg import Image, CompressedImage, PointCloud2, PointField, NavSatFix
-from std_msgs.msg import Header
+from std_msgs.msg import Header, Float32
 
 
 class MessageType:
@@ -29,7 +30,7 @@ class MessageType:
     SUBSCRIBE = 0x01
     TELEOP = 0x02
     POINTCLOUD = 0x03
-    GNSS_POSE = 0x04
+    GNSS_FIX = 0x04
 
 
 # mappings between PointField types and numpy types
@@ -168,6 +169,7 @@ class WebsocketBridge(Node):
         )
 
         self.gnss_fix_pub = self.create_publisher(NavSatFix, "/gnss/fix", 1)
+        self.gnss_yaw_pub = self.create_publisher(Float32, "/gnss/yaw", 1)
 
         self.cmd_vel_sub = self.create_subscription(
             Twist, "/cmd_vel", self.cmdVelCb, 10
@@ -347,51 +349,27 @@ class WebsocketBridge(Node):
 
         self.depth_pcd_pub.publish(msg)
 
-    def handleGnssPose(self, message: bytes):
+    def handleGnssFix(self, message: bytes):
 
-        origin_lat, origin_lon, origin_alt = (40.4431653, -79.9402844, 288.0961589)
+        lat = struct.unpack("f", message[1:5])[0]
+        lon = struct.unpack("f", message[5:9])[0]
+        alt = struct.unpack("f", message[9:13])[0]
+        yaw = struct.unpack("f", message[13:17])[0]
 
-        def bytesToTuple(b):
-            x_bytes = b[:2]
-            x = int.from_bytes(x_bytes, sys.byteorder, signed=True)
-
-            y_bytes = b[2:4]
-            y = int.from_bytes(y_bytes, sys.byteorder, signed=True)
-
-            z_bytes = b[4:]
-            z = int.from_bytes(z_bytes, sys.byteorder, signed=True)
-
-            # node.get_logger().info(f"{str(b)} -> {x}, {y}, {z}")
-
-            return (x, y, z)
-
-        pos_cm = bytesToTuple(message[1:])
-
-        pos = np.asarray(pos_cm) / 100
-
-        pose_msg = PoseWithCovarianceStamped()
-        pose_msg.header.frame_id = "map"
-        pose_msg.header.stamp = self.get_clock().now().to_msg()
-
-        pose_msg.pose.pose.position.x = pos[0]
-        pose_msg.pose.pose.position.y = pos[1]
-        pose_msg.pose.pose.position.z = pos[2]
-
-        self.get_logger().info(f"{pos}")
-
-        self.gnss_pose_pub.publish(pose_msg)
+        self.get_logger().info(f"{lat}, {lon}, {alt}, {yaw}")
 
         fix_msg = NavSatFix()
         fix_msg.header.frame_id = "earth"
         fix_msg.header.stamp = self.get_clock().now().to_msg()
 
-        lat_offset = pos[0] / 111111  # convert from meters to degrees lat.
-        lon_offset = math.cos(pos[1]) / 111111  # convert from meters to degrees lon.
-        fix_msg.latitude = origin_lat + lat_offset
-        fix_msg.longitude = origin_lon + lon_offset
-        fix_msg.altitude = origin_alt + pos[2]
+        fix_msg.latitude = lat
+        fix_msg.longitude = lon
+        fix_msg.altitude = alt
 
         self.gnss_fix_pub.publish(fix_msg)
+
+        yaw_msg = Float32(data=yaw)
+        self.gnss_yaw_pub.publish(yaw_msg)
 
 
 import asyncio
@@ -437,8 +415,8 @@ async def handleConnection(connection: ServerConnection):
 
             elif message[0] == MessageType.POINTCLOUD:
                 node.handlePointcloudBytes(message)
-            elif message[0] == MessageType.GNSS_POSE:
-                node.handleGnssPose(message)
+            elif message[0] == MessageType.GNSS_FIX:
+                node.handleGnssFix(message)
             else:
                 raise NotImplementedError(f"Received invalid Message Type {message[0]}")
 
