@@ -1,6 +1,6 @@
 from setuptools import find_packages, setup
 
-package_name = "costmaps"
+package_name = "trajectory_planning"
 
 setup(
     name=package_name,
@@ -18,9 +18,6 @@ setup(
     license="TODO: License declaration",  # See package.xml
     tests_require=["pytest"],
     entry_points={
-        "console_scripts": [
-            f"occupancy_grid_node = {package_name}.occupancy_grid_node:main",
-            f"cost_map_node = {package_name}.cost_map_node:main",
-        ],
+        "console_scripts": [f"planner = {package_name}.planner:main"],
     },
 )
