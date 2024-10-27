@@ -116,9 +116,17 @@ class CostMapNode(Node):
         arr = arr[np.logical_and(arr[:, 0] > 0, arr[:, 0] < GRID_HEIGHT)]
         arr = arr[np.logical_and(arr[:, 1] > 1, arr[:, 1] < GRID_WIDTH)]
 
-        grid = np.zeros((GRID_HEIGHT, GRID_WIDTH), dtype=np.int8)
+        grid = np.zeros((GRID_HEIGHT, GRID_WIDTH))
 
-        grid[tuple(arr.T)] = 100
+        grid[tuple(arr.T)] = 1000
+        grid = cv2.GaussianBlur(grid, (99, 99), 0)
+
+        # Normalize
+        grid /= np.max(grid)
+        grid *= 100
+        grid = np.ones_like(grid) * 100 - grid
+        grid = grid.astype(np.uint8)
+        # grid = grid.astype(np.uint8)
 
         # FLIP AXES
         grid = grid.T
@@ -129,7 +137,7 @@ class CostMapNode(Node):
         info.origin.position = origin
         msg = OccupancyGrid()
 
-        self.get_logger().info(f"{grid}")
+        # self.get_logger().info(f"{grid}")
         # plt.imshow(grid)
         # plt.show()
         msg.data = grid.flatten().tolist()

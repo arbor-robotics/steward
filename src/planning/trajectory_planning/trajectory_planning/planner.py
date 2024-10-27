@@ -155,7 +155,7 @@ class PlannerNode(Node):
         # Construct a Twist message to send
         msg = Twist()
 
-        yaw_kP = 0.7
+        yaw_kP = 1.3
         msg.angular.z = yaw_err * yaw_kP
 
         lin_kP = 0.5
