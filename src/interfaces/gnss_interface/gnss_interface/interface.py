@@ -27,6 +27,9 @@ class InterfaceNode(Node):
 
         self.ser = serial.Serial("/dev/ttyUSB0", 115200, timeout=1)
 
+        self.odom_pub = self.create_publisher(Odometry, "/gnss/odom", 10)
+        self.fix_pub = self.create_publisher(NavSatFix, "/gnss/fix", 10)
+
         self.create_timer(0.01, self.checkGnssMessages)
 
     def publishOdometry(self, sentence: pynmea2.GGA):
@@ -44,6 +47,15 @@ class InterfaceNode(Node):
 
         msg.pose.pose.position.x = ego_x
         msg.pose.pose.position.y = ego_y
+
+        fix_msg = NavSatFix()
+        fix_msg.header.stamp = self.get_clock().now().to_msg()
+        fix_msg.header.frame_id = "earth"
+
+        fix_msg.latitude = sentence.latitude
+        fix_msg.longitude = sentence.longitude
+
+        self.fix_pub.publish(fix_msg)
 
     def checkGnssMessages(self):
 

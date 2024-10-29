@@ -120,7 +120,9 @@ class OccupancyGridNode(Node):
 
         self.setUpParameters()
 
-        self.create_subscription(PointCloud2, "/depth_pcd", self.pcdCb, 1)
+        self.create_subscription(
+            PointCloud2, "/zed/point_cloud/cloud_registered", self.pcdCb, 1
+        )
 
         self.occ_grid_pub = self.create_publisher(OccupancyGrid, "/cost/occupancy", 1)
 

@@ -225,6 +225,9 @@ def generate_launch_description():
     )
     warthog_bridge = Node(package="web_bridge", executable="warthog_bridge")
 
+    health_monitor = Node(package="health", executable="monitor")
+    occ_grid = Node(package="costmaps", executable="occupancy_grid_node")
+
     return LaunchDescription(
         [
             DeclareLaunchArgument(
@@ -238,12 +241,15 @@ def generate_launch_description():
             rosbridge_server,
             warthog_bridge,
             # PERCEPTION
+            occ_grid,
             # PLANNING
             # forest_planner,
             # route_planner,
             # heightmap_publisher,
             # CONTROL
             # mvp_controller,
+            # SAFETY
+            health_monitor,
             # MISC.
             joint_state_publisher,
             pose_to_transform_broadcaster,
