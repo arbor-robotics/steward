@@ -73,6 +73,8 @@ def generate_launch_description():
     sim_bridge = Node(package="web_bridge", executable="sim_bridge")
     health_monitor = Node(package="health", executable="monitor")
     occ_grid = Node(package="costmaps", executable="occupancy_grid_node")
+    cost_maps = Node(package="costmaps", executable="cost_map_node")
+    behavior_fsm = Node(package="behavior", executable="fsm")
 
     return LaunchDescription(
         [
@@ -87,6 +89,8 @@ def generate_launch_description():
             # route_planner,
             # heightmap_publisher,
             occ_grid,
+            cost_maps,
+            behavior_fsm,
             # CONTROL
             # mvp_controller,
             # SAFETY

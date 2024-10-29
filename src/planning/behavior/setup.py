@@ -1,6 +1,6 @@
 from setuptools import find_packages, setup
 
-package_name = "costmaps"
+package_name = "behavior"
 
 setup(
     name=package_name,
@@ -18,9 +18,6 @@ setup(
     license="TODO: License declaration",  # See package.xml
     tests_require=["pytest"],
     entry_points={
-        "console_scripts": [
-            f"occupancy_grid_node = {package_name}.occupancy_grid_node:main",
-            f"cost_map_node = {package_name}.cost_map_node:main",
-        ],
+        f"console_scripts": [f"fsm = {package_name}.fsm:main"],
     },
 )
