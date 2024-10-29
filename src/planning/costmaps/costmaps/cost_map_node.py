@@ -33,19 +33,28 @@ class CostMapNode(Node):
 
         self.setUpParameters()
 
-        self.create_subscription(String, "planning/plan_json", self.planCb, 1)
+        self.create_subscription(String, "/planning/plan_json", self.planCb, 1)
+        self.create_subscription(OccupancyGrid, "/cost/occupancy", self.occCb, 1)
 
         self.seedling_dist_map_pub = self.create_publisher(
             OccupancyGrid, "/cost/dist_to_seedlings", 1
         )
 
+        self.total_cost_pub = self.create_publisher(OccupancyGrid, "/cost/total", 1)
+
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
 
-        self.create_timer(0.1, self.updateMap)
+        self.create_timer(0.1, self.updateCosts)
 
         self.seedling_points = None
         self.seedling_pts_bl = None
+        self.cached_occ = np.zeros((100, 100))
+
+    def occCb(self, msg: OccupancyGrid):
+        arr = np.asarray(msg.data).reshape(msg.info.height, msg.info.width)
+
+        self.cached_occ = arr
 
     def latLonToMap(self, lat: float, lon: float):
         lat0, lon0, _ = self.get_parameter("map_origin_lat_lon_alt_degrees").value
@@ -58,7 +67,7 @@ class CostMapNode(Node):
 
         return (x, y)
 
-    def updateMap(self):
+    def updateCosts(self, do_plot=False):
 
         if self.seedling_points is None:
             return
@@ -89,7 +98,7 @@ class CostMapNode(Node):
             if dist < 20:
                 nearby_seedlings.append(seedling_pt)
 
-        self.get_logger().info(f"There are {len(nearby_seedlings)} nearby seedlings.")
+        # self.get_logger().info(f"There are {len(nearby_seedlings)} nearby seedlings.")
 
         RES = 0.2  # meters per pixel
         ORIGIN_X_PX = 40
@@ -99,37 +108,58 @@ class CostMapNode(Node):
         GRID_WIDTH = 100
         GRID_HEIGHT = GRID_WIDTH
 
+        distance_to_seedling_map = np.zeros((GRID_HEIGHT, GRID_WIDTH))
+
         # Transform points to base_link
-        self.transformToBaselink(nearby_seedlings)
+        self.seedling_pts_bl = self.transformToBaselink(nearby_seedlings)
 
-        arr = self.seedling_pts_bl
+        if self.seedling_pts_bl is None:
+            self.get_logger().warning("No nearby points.")
+            distance_to_seedling_map += 100
+        else:
+            points = self.seedling_pts_bl
 
-        arr /= RES
-        arr = arr.astype(np.int8)
+            points /= RES
+            points = points.astype(np.int8)
 
-        # Discard indices outside of bounds
+            # Discard indices outside of bounds
 
-        # Offset by origin
-        arr[:, 0] += ORIGIN_X_PX
-        arr[:, 1] += ORIGIN_Y_PX
+            # Offset by origin
+            points[:, 0] += ORIGIN_X_PX
+            points[:, 1] += ORIGIN_Y_PX
 
-        arr = arr[np.logical_and(arr[:, 0] > 0, arr[:, 0] < GRID_HEIGHT)]
-        arr = arr[np.logical_and(arr[:, 1] > 1, arr[:, 1] < GRID_WIDTH)]
+            points = points[
+                np.logical_and(points[:, 0] > 0, points[:, 0] < GRID_HEIGHT)
+            ]
+            points = points[np.logical_and(points[:, 1] > 1, points[:, 1] < GRID_WIDTH)]
 
-        grid = np.zeros((GRID_HEIGHT, GRID_WIDTH))
+            distance_to_seedling_map[tuple(points.T)] = 1000
 
-        grid[tuple(arr.T)] = 1000
-        grid = cv2.GaussianBlur(grid, (99, 99), 0)
+        distance_to_seedling_map = cv2.GaussianBlur(
+            distance_to_seedling_map, (99, 99), 0
+        )
 
         # Normalize
-        grid /= np.max(grid)
-        grid *= 100
-        grid = np.ones_like(grid) * 100 - grid
-        grid = grid.astype(np.uint8)
+        MAX_DISTANCE_COST = 30
+        distance_to_seedling_map /= np.max(distance_to_seedling_map)
+        distance_to_seedling_map *= MAX_DISTANCE_COST
+        distance_to_seedling_map = (
+            np.ones_like(distance_to_seedling_map) * MAX_DISTANCE_COST
+            - distance_to_seedling_map
+        )
+        distance_to_seedling_map = distance_to_seedling_map.astype(np.uint8)
         # grid = grid.astype(np.uint8)
 
         # FLIP AXES
-        grid = grid.T
+        distance_to_seedling_map = distance_to_seedling_map.T
+
+        # Now add the layers together
+        total_cost_map = distance_to_seedling_map + self.cached_occ
+        total_cost_map[total_cost_map > 100] = 100
+
+        if np.min(total_cost_map) < 0:
+            self.get_logger().error(f"Total cost had elements less than 0. Correcting.")
+            total_cost_map[total_cost_map < 0] = 0
 
         origin = Point(x=-ORIGIN_X_M, y=-ORIGIN_Y_M)
 
@@ -138,19 +168,39 @@ class CostMapNode(Node):
         msg = OccupancyGrid()
 
         # self.get_logger().info(f"{grid}")
-        # plt.imshow(grid)
-        # plt.show()
-        msg.data = grid.flatten().tolist()
+        if do_plot:
+            fig, (ax1, ax2, ax3) = plt.subplots(1, 3)
+            ax1.imshow(distance_to_seedling_map)
+            ax2.imshow(self.cached_occ)
+            ax3.imshow(total_cost_map)
+            plt.show()
+
+        msg.data = distance_to_seedling_map.flatten().tolist()
         msg.info = info
 
         msg.header.frame_id = "base_link"
         msg.header.stamp = self.get_clock().now().to_msg()
 
         self.seedling_dist_map_pub.publish(msg)
+
+        try:
+            data_list = total_cost_map.flatten().tolist()
+            msg.data = data_list
+        except AssertionError as e:
+            self.get_logger().warning(
+                f"{e}. Min was {np.min(total_cost_map)}, max was {np.max(total_cost_map)}"
+            )
+
+        self.total_cost_pub.publish(msg)
         # ax2.imshow(grid)
         # plt.show()
 
+    # def numpyToCostmap(self, arr: np.ndarray):
+
     def transformToBaselink(self, points):
+
+        if len(points) < 1:
+            return None
 
         # Form a 2D homogeneous transform matrix
         t = -self.ego_yaw
@@ -176,13 +226,18 @@ class CostMapNode(Node):
         # ax1.set_title(f"Yaw: {self.ego_yaw}")
 
         # Transform to base_link
-        pts_homog = np.vstack((points.T, np.ones(len(points))))
-        self.get_logger().info(f"{pts_homog}")
-        pts_tfed = H @ pts_homog
-        pts_tfed = pts_tfed.T
-        pts_tfed = pts_tfed[:, :-1]
-        self.get_logger().info(f"{self.ego_yaw}")
-        self.get_logger().info(f"{pts_tfed}")
+        try:
+            pts_homog = np.vstack((points.T, np.ones(len(points))))
+            # self.get_logger().info(f"{pts_homog}")
+            pts_tfed = H @ pts_homog
+            pts_tfed = pts_tfed.T
+            pts_tfed = pts_tfed[:, :-1]
+            # self.get_logger().info(f"{self.ego_yaw}")
+            # self.get_logger().info(f"{pts_tfed}")
+
+        except ValueError as e:
+            # There were no points nearby
+            return None
 
         # ax2.scatter(pts_tfed[:, 0], pts_tfed[:, 1])
         # ax2.scatter(0, 0, c="red")
@@ -197,7 +252,7 @@ class CostMapNode(Node):
 
         # plt.show()
 
-        self.seedling_pts_bl = pts_tfed
+        return pts_tfed
 
     def planCb(self, msg: String):
 

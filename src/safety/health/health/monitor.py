@@ -17,7 +17,7 @@ from tf2_ros.transform_listener import TransformListener
 # ROS2 message definitions
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
 from std_msgs.msg import Header
-from steward_msgs.msg import FailedChecks, HealthCheck, SystemwideStatus
+from steward_msgs.msg import FailedChecks, HealthCheck, SystemwideStatus, Mode
 from std_msgs.msg import Empty
 
 # class SystemwideStatus:
@@ -86,6 +86,8 @@ class HealthMonitor(Node):
             SystemwideStatus, "/health/system_wide_status", 1
         )
 
+        self.current_mode_pub = self.create_publisher(Mode, "/health/current_mode", 1)
+
         self.failed_checks_pub = self.create_publisher(
             FailedChecks, "/health/failed_checks", 1
         )
@@ -102,6 +104,8 @@ class HealthMonitor(Node):
 
         self.STATE_ESTIMATION_AVAILABLE = False
         self.state_estimation_check_msg = HealthCheck()
+
+        self.current_mode = Mode.STOPPED
 
     def checkTransforms(self):
         check_msg = HealthCheck()
@@ -167,7 +171,9 @@ class HealthMonitor(Node):
 
         if not self.STATE_ESTIMATION_AVAILABLE:
             failed_checks.append(self.state_estimation_check_msg)
-            systemwide_status = self.state_estimation_check_msg.trigger_status.level
+            systemwide_status = max(
+                self.state_estimation_check_msg.trigger_status.level, systemwide_status
+            )
 
         msg = SystemwideStatus()
         msg.level = systemwide_status

@@ -18,13 +18,19 @@ from tf2_ros.transform_listener import TransformListener
 import utm
 import math
 from scipy.spatial.transform.rotation import Rotation as R
+from skimage.draw import disk
 
 
 # ROS2 message definitions
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
-from geometry_msgs.msg import Pose, Point, Twist
-from nav_msgs.msg import OccupancyGrid, MapMetaData
-from steward_msgs.msg import FailedChecks, HealthCheck, SystemwideStatus
+from geometry_msgs.msg import Pose, Point, Twist, PoseStamped
+from nav_msgs.msg import OccupancyGrid, MapMetaData, Path
+from steward_msgs.msg import (
+    FailedChecks,
+    HealthCheck,
+    SystemwideStatus,
+    TrajectoryCandidates,
+)
 from sensor_msgs.msg import PointCloud2, PointField
 from std_msgs.msg import Header, String
 
@@ -36,8 +42,12 @@ class PlannerNode(Node):
         self.setUpParameters()
 
         self.create_subscription(String, "planning/plan_json", self.planCb, 1)
+        self.create_subscription(Twist, "/cmd_vel", self.cmdVelCb, 1)
+        self.create_subscription(OccupancyGrid, "/cost/total", self.totalCostCb, 1)
 
         self.twist_pub = self.create_publisher(Twist, "/cmd_vel", 1)
+        self.twist_path_pub = self.create_publisher(Path, "/cmd_vel/path", 1)
+        self.candidates_pub = self.create_publisher(Path, "/planning/candidates", 1)
 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
@@ -48,8 +58,99 @@ class PlannerNode(Node):
         self.ego_pos = None
         self.ego_yaw = None
         self.seedling_points = []
+        self.total_cost_map = None
 
         self.create_timer(0.1, self.updateTrajectory)
+
+    def totalCostCb(self, msg: OccupancyGrid):
+        arr = np.asarray(msg.data).reshape(msg.info.height, msg.info.width)
+
+        self.total_cost_map = arr
+
+    def cmdVelCb(self, msg: Twist):
+
+        # if self.ego_pos is None:
+        #     self.get_logger().warning(f"Ego position unavailable.")
+        #     return
+
+        # if self.ego_yaw is None:
+        #     self.get_logger().warning(f"Ego yaw unavailable.")
+        #     return
+
+        # Visualize the twist trajectory up to some time horizon
+        TIME_HORIZON = 1.0  # sec
+        dt = 0.05  # sec
+
+        v = msg.linear.x
+        omega = msg.angular.z
+
+        pose = np.zeros(4)
+        poses = []
+
+        for t in np.arange(0, TIME_HORIZON, dt):
+            poses.append(pose.copy())
+            pose[0] += v * math.cos(pose[2])
+            pose[1] += v * math.sin(pose[2])
+            pose[2] += omega
+            pose[3] = t + dt
+
+        poses = np.asarray(poses)
+
+        # Form a Path message
+        path_msg = Path()
+        path_msg.header.frame_id = "base_link"
+        path_msg.header.stamp = self.get_clock().now().to_msg()
+
+        for pose in poses:
+            pose_msg = PoseStamped()
+            pose_msg.header.frame_id = "base_link"
+            pose_msg.header.stamp = self.dt_to_time_msg(pose[3])
+
+            pose_msg.pose.position.x = pose[0]
+            pose_msg.pose.position.y = pose[1]
+            pose_msg.pose.orientation.z = math.cos(pose[2] / 2)
+            pose_msg.pose.orientation.w = math.sin(pose[2] / 2)
+            path_msg.poses.append(pose_msg)
+
+        self.twist_path_pub.publish(path_msg)
+
+        total_cost = self.get_total_cost(poses)
+        print(total_cost)
+
+    def get_total_cost(self, poses: np.ndarray, collision_radius: float = 1.0):
+
+        collision_radius_px = collision_radius / 0.2
+
+        if self.total_cost_map is None:
+            return
+
+        grid_coords = poses.copy()[:, :2]
+        grid_coords /= 0.2
+        grid_coords[:, 0] += 40
+        grid_coords[:, 1] += 50
+
+        img = np.zeros_like(self.total_cost_map)
+
+        total_cost = 0
+
+        for pixel_coord in grid_coords:
+            print(pixel_coord)
+            rr, cc = disk(pixel_coord, collision_radius_px, shape=img.shape)
+            img[rr, cc] = 1
+            total_cost += np.sum(self.total_cost_map[rr, cc])
+
+        # plt.scatter(grid_coords[:, 0], grid_coords[:, 1])
+        # plt.imshow(img)
+        # plt.show()
+
+        return total_cost
+
+    def dt_to_time_msg(self, dt: float):
+        msg = self.get_clock().now().to_msg()
+        msg.nanosec += int(1e9 * (dt - math.floor(dt)))
+        msg.sec += math.floor(dt)
+
+        return msg
 
     def latLonToMap(self, lat: float, lon: float):
         lat0, lon0, _ = self.get_parameter("map_origin_lat_lon_alt_degrees").value
@@ -107,9 +208,9 @@ class PlannerNode(Node):
                     min_dist = dist
                     self.goal_point = [seedling_x, seedling_y]
 
-            self.get_logger().info(
-                f"Min dist was: {min_dist}. Goal point is now {self.goal_point}"
-            )
+            # self.get_logger().info(
+            #     f"Min dist was: {min_dist}. Goal point is now {self.goal_point}"
+            # )
 
         except KeyError as e:
             self.get_logger().error(f"{e}")
@@ -172,10 +273,10 @@ class PlannerNode(Node):
             msg.angular.z = 0.0
             self.onGoalPointReached()
 
-        self.twist_pub.publish(msg)
-        self.get_logger().info(
-            f"Lin err: {dist_err}, yaw err: {yaw_err}. CMD: {msg.linear.x}, {msg.angular.z}"
-        )
+        # self.twist_pub.publish(msg)
+        # self.get_logger().info(
+        #     f"Lin err: {dist_err}, yaw err: {yaw_err}. CMD: {msg.linear.x}, {msg.angular.z}"
+        # )
 
     def onGoalPointReached(self):
 
