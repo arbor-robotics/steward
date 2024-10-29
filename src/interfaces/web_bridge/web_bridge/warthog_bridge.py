@@ -79,9 +79,31 @@ class WarthogBridge(Node):
             DiagnosticArray, "/diagnostics/warthog", 10
         )
 
+        self.diagnostic_pub = self.create_publisher(DiagnosticStatus, "/diagnostics", 1)
+
         self.wheel_odom_pub = self.create_publisher(Odometry, "/odom/wheel", 10)
 
         self.imu_pub = self.create_publisher(Imu, "/imu/warthog", 10)
+
+        self.create_timer(0.1, self.publishStatus)
+
+        self.connected_to_client = False
+
+    def publishStatus(self):
+
+        # self.get_logger().info("PUBLISHING STATUS")
+
+        if self.connected_to_client:
+            level = DiagnosticStatus.OK
+            msg = "Connected."
+
+        else:
+            level = DiagnosticStatus.ERROR
+            msg = "Not connected."
+
+        status_msg = DiagnosticStatus(level=level, name=self.get_name(), message=msg)
+
+        self.diagnostic_pub.publish(status_msg)
 
     def cmdVelCb(self, msg: Twist):
 
@@ -204,6 +226,7 @@ class WarthogBridge(Node):
 
     def checkConnection(self):
         if self.ws.connected:
+            self.connected_to_client = True
             return  # Already connected.
         try:
             self.ws.connect("ws://192.168.131.1:9090", timeout=0.1)
@@ -213,10 +236,13 @@ class WarthogBridge(Node):
             self.subscribeToDiagnostics()
 
         except ConnectionRefusedError as e:
+            self.connected_to_client = False
             self.get_logger().warning(
                 "Connection to Warthog Rosbridge Server refused. Retrying."
             )
         except TimeoutError as e:
+            self.connected_to_client = False
+
             self.get_logger().warning(
                 "Connection to Warthog Rosbridge Server timed out. Retrying."
             )

@@ -163,6 +163,7 @@ def zed_launch_setup(context, *args, **kwargs):
         # prefix=['gdbserver localhost:3000'],
         parameters=node_parameters,
         arguments=["--ros-args", "--log-level", "WARN"],
+        remappings=[("/diagnostics", "/diagnostics/zed")],
     )
 
     return [rsp_node, zed_wrapper_node]
@@ -239,7 +240,7 @@ def generate_launch_description():
             OpaqueFunction(function=zed_launch_setup),  # camera
             gnss,
             rosbridge_server,
-            warthog_bridge,
+            # warthog_bridge,
             # PERCEPTION
             occ_grid,
             # PLANNING
