@@ -41,7 +41,7 @@ class MessageType:
 
 class WarthogBridge(Node):
     def __init__(self):
-        super().__init__("websocket_bridge")
+        super().__init__("warthog_bridge")
 
         self.bridge = CvBridge()
 

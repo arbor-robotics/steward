@@ -228,6 +228,9 @@ def generate_launch_description():
 
     health_monitor = Node(package="health", executable="monitor")
     occ_grid = Node(package="costmaps", executable="occupancy_grid_node")
+    cost_maps = Node(package="costmaps", executable="cost_map_node")
+
+    behavior_fsm = Node(package="behavior", executable="fsm")
 
     return LaunchDescription(
         [
@@ -240,10 +243,12 @@ def generate_launch_description():
             OpaqueFunction(function=zed_launch_setup),  # camera
             gnss,
             rosbridge_server,
-            # warthog_bridge,
+            warthog_bridge,
             # PERCEPTION
-            occ_grid,
+            # occ_grid,
             # PLANNING
+            cost_maps,
+            behavior_fsm,
             # forest_planner,
             # route_planner,
             # heightmap_publisher,

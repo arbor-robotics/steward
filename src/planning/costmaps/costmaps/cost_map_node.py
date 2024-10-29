@@ -67,10 +67,12 @@ class CostMapNode(Node):
 
         return (x, y)
 
-    def updateCosts(self, do_plot=False):
-
+    def getDistanceToSeedlingMap(self) -> np.ndarray:
         if self.seedling_points is None:
-            return
+            self.get_logger().warning(
+                "Seedling locations not available. Skipping distance to seedling cost."
+            )
+            return np.ones((100, 100)) * 100
 
         try:
             bl_to_map_tf = self.tf_buffer.lookup_transform(
@@ -86,7 +88,7 @@ class CostMapNode(Node):
 
         except TransformException as ex:
             self.get_logger().warning(f"Could not get ego position: {ex}")
-            return
+            return np.ones((100, 100)) * 100
 
         nearby_seedlings = []
 
@@ -153,6 +155,20 @@ class CostMapNode(Node):
         # FLIP AXES
         distance_to_seedling_map = distance_to_seedling_map.T
 
+        return distance_to_seedling_map.astype(np.uint8)
+
+    def updateCosts(self, do_plot=False):
+
+        RES = 0.2  # meters per pixel
+        ORIGIN_X_PX = 40
+        ORIGIN_X_M = ORIGIN_X_PX * RES
+        ORIGIN_Y_PX = 50
+        ORIGIN_Y_M = ORIGIN_Y_PX * RES
+        GRID_WIDTH = 100
+        GRID_HEIGHT = GRID_WIDTH
+
+        distance_to_seedling_map = self.getDistanceToSeedlingMap()
+
         # Now add the layers together
         total_cost_map = distance_to_seedling_map + self.cached_occ
         total_cost_map[total_cost_map > 100] = 100
@@ -175,7 +191,12 @@ class CostMapNode(Node):
             ax3.imshow(total_cost_map)
             plt.show()
 
-        msg.data = distance_to_seedling_map.flatten().tolist()
+        try:
+            msg.data = distance_to_seedling_map.astype(np.uint8).flatten().tolist()
+        except AssertionError as e:
+            self.get_logger().warning(
+                f"{e}. Min was {np.min(distance_to_seedling_map)}, max was {np.max(distance_to_seedling_map)}, dtype was {distance_to_seedling_map.dtype}"
+            )
         msg.info = info
 
         msg.header.frame_id = "base_link"
@@ -184,7 +205,7 @@ class CostMapNode(Node):
         self.seedling_dist_map_pub.publish(msg)
 
         try:
-            data_list = total_cost_map.flatten().tolist()
+            data_list = total_cost_map.astype(np.uint8).flatten().tolist()
             msg.data = data_list
         except AssertionError as e:
             self.get_logger().warning(
@@ -256,6 +277,8 @@ class CostMapNode(Node):
 
     def planCb(self, msg: String):
 
+        print("Received plan!")
+
         try:
             plan_obj = json.loads(msg.data)
         except json.decoder.JSONDecodeError as e:
@@ -266,6 +289,7 @@ class CostMapNode(Node):
             seedlings: list[object] = plan_obj["seedlings"]
 
             self.seedling_points = []
+            print("Updated seedling_points!")
 
             for seedling in seedlings:
                 seedling_x, seedling_y = self.latLonToMap(

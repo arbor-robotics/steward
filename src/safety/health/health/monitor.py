@@ -70,7 +70,7 @@ class HealthMonitor(Node):
         self.checks = [
             Check(
                 "BRIDGE_FAILURE",
-                inspects=["sim_bridge", "bridge/warthog"],
+                inspects=["sim_bridge", "warthog_bridge"],
                 period_sec=0.2,
                 triggers=SystemwideStatus.OUT_OF_SERVICE,
                 message="Steward is unable to connect to the Warthog or the simulator and cannot operate.",

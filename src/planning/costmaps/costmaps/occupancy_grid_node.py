@@ -7,6 +7,7 @@ from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPo
 from time import time
 from tqdm import tqdm, trange
 from scipy.spatial.distance import pdist, squareform
+from scipy.spatial.transform import Rotation as R
 from matplotlib import pyplot as plt
 import cv2
 from enum import IntEnum
@@ -94,24 +95,21 @@ def pointcloud2_to_array(cloud_msg, squeeze=True):
     dtype_list = fields_to_dtype(cloud_msg.fields, cloud_msg.point_step)
 
     # parse the cloud into an array
-    # cloud_arr = np.frombuffer(cloud_msg.data, dtype_list)
-    cloud_arr = np.frombuffer(cloud_msg.data, np.float32)
+    cloud_arr = np.frombuffer(cloud_msg.data, dtype_list)
 
-    # # remove the dummy fields that were added
-    # cloud_arr = cloud_arr[
-    #     [
-    #         fname
-    #         for fname, _type in dtype_list
-    #         if not (fname[: len(DUMMY_FIELD_PREFIX)] == DUMMY_FIELD_PREFIX)
-    #     ]
-    # ]
+    # remove the dummy fields that were added
+    cloud_arr = cloud_arr[
+        [
+            fname
+            for fname, _type in dtype_list
+            if not (fname[: len(DUMMY_FIELD_PREFIX)] == DUMMY_FIELD_PREFIX)
+        ]
+    ]
 
-    # if squeeze and cloud_msg.height == 1:
-    #     return np.reshape(cloud_arr, (cloud_msg.width,))
-    # else:
-    #     return np.reshape(cloud_arr, (cloud_msg.height, cloud_msg.width))
-
-    return np.reshape(cloud_arr, (-1, 3))
+    if squeeze and cloud_msg.height == 1:
+        return np.reshape(cloud_arr, (cloud_msg.width,))
+    else:
+        return np.reshape(cloud_arr, (cloud_msg.height, cloud_msg.width))
 
 
 class OccupancyGridNode(Node):
@@ -126,8 +124,33 @@ class OccupancyGridNode(Node):
 
         self.occ_grid_pub = self.create_publisher(OccupancyGrid, "/cost/occupancy", 1)
 
+    def transformPoints(self, pts: np.ndarray) -> np.ndarray:
+        assert isinstance(pts, np.ndarray)
+        assert pts.shape[1] == 3
+
+        # The ZED camera is tilted about 10 degrees down, so we should
+        # adjust the points accordingly
+
+        rot_matrix = R.from_euler("xyz", [0.0, -10.0, 0.0], degrees=True).as_matrix()
+
+        return pts @ rot_matrix
+
     def pcdCb(self, msg: PointCloud2):
-        arr = pointcloud2_to_array(msg)
+        pts = pointcloud2_to_array(msg)
+
+        # If the pcd comes from a ZED camera, perform additional cleanup
+        from_zed = pts.ndim == 2
+
+        if from_zed:
+            pts = pts.flatten()
+
+            pts = np.vstack((pts["x"], pts["y"], pts["z"])).T
+
+            # Remove rows with NaN
+            pts = pts[~np.isnan(pts).any(axis=1)]
+
+            pts = self.transformPoints(pts)
+
         # self.get_logger().info(f"Got point cloud with shape {arr.shape}: {arr[0]}!")
 
         RES = 0.2  # meters per pixel
@@ -139,13 +162,13 @@ class OccupancyGridNode(Node):
         GRID_HEIGHT = GRID_WIDTH
 
         # Now we need to project everything to an occupancy grid
-        arr /= RES
+        arr = pts / RES
         arr = arr.astype(np.int8)
 
         # TODO: Perform PROPER plane segmentation
         # For now, we'll naively check height
         HEIGHT_CUTOFF = 0.3
-        arr = arr[arr[:, 2] > 0.3]
+        arr = arr[arr[:, 2] > HEIGHT_CUTOFF]
         arr = arr[:, :2]
 
         # Discard indices outside of bounds
