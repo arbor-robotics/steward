@@ -208,9 +208,7 @@ def generate_launch_description():
         package="joint_state_publisher", executable="joint_state_publisher"
     )
 
-    pose_to_transform_broadcaster = Node(
-        package="state_estimation", executable="pose_to_transform_broadcaster"
-    )
+    particle_filter = Node(package="state_estimation", executable="particle_filter")
 
     forest_planner = Node(
         package="forest_planning",
@@ -241,7 +239,7 @@ def generate_launch_description():
             ),
             # INTERFACES
             OpaqueFunction(function=zed_launch_setup),  # camera
-            gnss,
+            # gnss,
             rosbridge_server,
             warthog_bridge,
             # PERCEPTION
@@ -258,7 +256,7 @@ def generate_launch_description():
             health_monitor,
             # MISC.
             joint_state_publisher,
-            pose_to_transform_broadcaster,
+            # particle_filter,
             urdf_publisher,
         ]
     )

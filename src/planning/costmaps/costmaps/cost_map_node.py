@@ -69,9 +69,9 @@ class CostMapNode(Node):
 
     def getDistanceToSeedlingMap(self) -> np.ndarray:
         if self.seedling_points is None:
-            self.get_logger().warning(
-                "Seedling locations not available. Skipping distance to seedling cost."
-            )
+            # self.get_logger().warning(
+            #     "Seedling locations not available. Skipping distance to seedling cost."
+            # )
             return np.ones((100, 100)) * 100
 
         try:

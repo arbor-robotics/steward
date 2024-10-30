@@ -9,9 +9,9 @@ from tf2_ros import TransformBroadcaster
 # https://docs.ros.org/en/humble/Tutorials/Intermediate/Tf2/Writing-A-Tf2-Broadcaster-Py.html
 
 
-class PoseToTransformBroadcaster(Node):
+class ParticleFilter(Node):
     def __init__(self):
-        super().__init__("pose_to_transform_broadcaster")
+        super().__init__("particle_filter")
 
         sensor_qos_profile = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
@@ -43,7 +43,7 @@ class PoseToTransformBroadcaster(Node):
 def main(args=None):
     rclpy.init(args=args)
 
-    broadcaster = PoseToTransformBroadcaster()
+    broadcaster = ParticleFilter()
 
     rclpy.spin(broadcaster)
 
