@@ -122,6 +122,8 @@ class OccupancyGridNode(Node):
             PointCloud2, "/zed/point_cloud/cloud_registered", self.pcdCb, 1
         )
 
+        self.create_subscription(PointCloud2, "/depth_pcd", self.pcdCb, 1)
+
         self.occ_grid_pub = self.create_publisher(OccupancyGrid, "/cost/occupancy", 1)
 
     def transformPoints(self, pts: np.ndarray) -> np.ndarray:
@@ -141,15 +143,17 @@ class OccupancyGridNode(Node):
         # If the pcd comes from a ZED camera, perform additional cleanup
         from_zed = pts.ndim == 2
 
-        if from_zed:
-            pts = pts.flatten()
+        pts = pts.flatten()
+        pts = np.vstack((pts["x"], pts["y"], pts["z"])).T
 
-            pts = np.vstack((pts["x"], pts["y"], pts["z"])).T
+        if from_zed:
 
             # Remove rows with NaN
             pts = pts[~np.isnan(pts).any(axis=1)]
 
             pts = self.transformPoints(pts)
+        else:
+            print(pts.dtype)
 
         # self.get_logger().info(f"Got point cloud with shape {arr.shape}: {arr[0]}!")
 
@@ -160,6 +164,8 @@ class OccupancyGridNode(Node):
         ORIGIN_Y_M = ORIGIN_Y_PX * RES
         GRID_WIDTH = 100
         GRID_HEIGHT = GRID_WIDTH
+
+        print(pts)
 
         # Now we need to project everything to an occupancy grid
         arr = pts / RES
