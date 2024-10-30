@@ -142,7 +142,7 @@ class CostMapNode(Node):
         )
 
         # Normalize
-        MAX_DISTANCE_COST = 30
+        MAX_DISTANCE_COST = 60
         distance_to_seedling_map /= np.max(distance_to_seedling_map)
         distance_to_seedling_map *= MAX_DISTANCE_COST
         distance_to_seedling_map = (
@@ -186,9 +186,14 @@ class CostMapNode(Node):
         # self.get_logger().info(f"{grid}")
         if do_plot:
             fig, (ax1, ax2, ax3) = plt.subplots(1, 3)
-            ax1.imshow(distance_to_seedling_map)
-            ax2.imshow(self.cached_occ)
-            ax3.imshow(total_cost_map)
+            ax1.set_title("Distance to planting locations")
+            ax2.set_title("Occupancy")
+            ax3.set_title("Total cost")
+
+            ax1.imshow(distance_to_seedling_map, cmap="summer")
+            ax2.imshow(self.cached_occ, cmap="summer")
+            pos = ax3.imshow(total_cost_map, cmap="summer")
+            # fig.colorbar(pos, ax=ax3, label="Cost", shrink=0.6)
             plt.show()
 
         try:

@@ -9,6 +9,7 @@ from tqdm import tqdm, trange
 from scipy.spatial.distance import pdist, squareform
 from scipy.linalg import norm
 from matplotlib import pyplot as plt
+from matplotlib import patches
 import cv2
 from enum import IntEnum
 import json
@@ -78,11 +79,36 @@ class PlannerNode(Node):
         #     return
 
         # Visualize the twist trajectory up to some time horizon
-        TIME_HORIZON = 1.0  # sec
+        TIME_HORIZON = 0.5  # sec
         dt = 0.05  # sec
 
-        v = msg.linear.x
-        omega = msg.angular.z
+        # v = msg.linear.x
+        # omega = msg.angular.z
+
+        # FAKE DATA
+
+        V = np.linspace(0.2, 1.0, 5)
+        Omega = np.linspace(-0.2, 0.1, 5)
+
+        candidates = []
+
+        for v in V:
+            for omega in Omega:
+                pose = np.zeros(4)
+                poses = []
+
+                for t in np.arange(0, TIME_HORIZON, dt):
+                    poses.append(pose.copy())
+                    pose[0] += v * math.cos(pose[2])
+                    pose[1] += v * math.sin(pose[2])
+                    pose[2] += omega
+                    pose[3] = t + dt
+
+                poses = np.asarray(poses)
+                candidates.append(poses)
+
+        v = 1.0
+        omega = 0.1
 
         pose = np.zeros(4)
         poses = []
@@ -101,6 +127,15 @@ class PlannerNode(Node):
         path_msg.header.frame_id = "base_link"
         path_msg.header.stamp = self.get_clock().now().to_msg()
 
+        fig, ax = plt.subplots()
+        x = range(100)
+
+        if self.total_cost_map is None:
+            return
+
+        ax.imshow(self.total_cost_map, extent=[-8, 12, -10, 10], cmap="summer")
+
+        # candidate
         for pose in poses:
             pose_msg = PoseStamped()
             pose_msg.header.frame_id = "base_link"
@@ -112,10 +147,23 @@ class PlannerNode(Node):
             pose_msg.pose.orientation.w = math.sin(pose[2] / 2)
             path_msg.poses.append(pose_msg)
 
+        for candidate in candidates:
+            ax.plot(candidate[:, 0], candidate[:, 1], color="lightcoral", linewidth=2)
+
+        ax.plot(poses[:, 0], poses[:, 1], color="red", linewidth=5)
+
+        rect = patches.Rectangle(
+            (-0.5, -0.5), 1, 1, linewidth=3, edgecolor="white", facecolor="none"
+        )
+        ax.add_patch(rect)
+
         self.twist_path_pub.publish(path_msg)
 
         total_cost = self.get_total_cost(poses)
         print(total_cost)
+
+        # ax.plot(x, x, "--", linewidth=5, color="firebrick")
+        plt.show()
 
     def get_total_cost(self, poses: np.ndarray, collision_radius: float = 1.0):
 

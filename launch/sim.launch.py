@@ -91,6 +91,7 @@ def generate_launch_description():
             occ_grid,
             cost_maps,
             behavior_fsm,
+            # trajectory_planner,
             # CONTROL
             # mvp_controller,
             # SAFETY
