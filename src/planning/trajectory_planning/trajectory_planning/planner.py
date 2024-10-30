@@ -19,7 +19,8 @@ from tf2_ros.transform_listener import TransformListener
 import utm
 import math
 from scipy.spatial.transform.rotation import Rotation as R
-from skimage.draw import disk
+
+# from skimage.draw import disk
 
 
 # ROS2 message definitions
@@ -159,8 +160,8 @@ class PlannerNode(Node):
 
         self.twist_path_pub.publish(path_msg)
 
-        total_cost = self.get_total_cost(poses)
-        print(total_cost)
+        # total_cost = self.get_total_cost(poses)
+        # print(total_cost)
 
         # ax.plot(x, x, "--", linewidth=5, color="firebrick")
         plt.show()
@@ -256,9 +257,9 @@ class PlannerNode(Node):
                     min_dist = dist
                     self.goal_point = [seedling_x, seedling_y]
 
-            # self.get_logger().info(
-            #     f"Min dist was: {min_dist}. Goal point is now {self.goal_point}"
-            # )
+            self.get_logger().info(
+                f"Min dist was: {min_dist}. Goal point is now {self.goal_point}"
+            )
 
         except KeyError as e:
             self.get_logger().error(f"{e}")
@@ -294,6 +295,8 @@ class PlannerNode(Node):
 
         dist_err = pdist([self.goal_point, self.ego_pos])
         yaw_err = target_yaw - self.ego_yaw
+
+        print(yaw_err)
 
         while yaw_err < -math.pi:
             yaw_err += 2 * math.pi
