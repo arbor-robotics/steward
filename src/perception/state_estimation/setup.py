@@ -19,7 +19,8 @@ setup(
     tests_require=["pytest"],
     entry_points={
         "console_scripts": [
-            "pose_to_transform_broadcaster = state_estimation.pose_to_transform_broadcaster:main"
+            "pose_to_transform_broadcaster = state_estimation.pose_to_transform_broadcaster:main",
+            "particle_filter = state_estimation.particle_filter:main",
         ],
     },
 )
