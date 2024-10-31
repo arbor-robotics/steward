@@ -239,11 +239,12 @@ class ParticleFilterLocalizer(Node):
 
         self.create_subscription(Imu, "/gnss/imu", self.imuCb, sensor_qos_profile)
 
-        self.create_subscription(Twist, "/cmd_vel", self.cmdVelCb, 10)
+        self.create_timer(0.1, self.makeEstimate)
 
-    def cmdVelCb(self, msg: Twist):
-        u = (msg.angular.z, msg.linear.x)
-        updateFromMotionCommand(self.particles, u=u, std=(0.2, 0.05))
+    def makeEstimate(self):
+        if self.particles is None:
+            return
+        mean, var = estimate(self.particles, self.weights)
         self.plotParticles()
 
     def plotParticles(self):
