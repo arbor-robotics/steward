@@ -217,6 +217,7 @@ class ParticleFilterLocalizer(Node):
         self.setUpParameters()
 
         self.ego_pos_hist = []
+        self.yaw_hist = []
         self.ego_vel_hist = []
         self.imu_hist = []
 
@@ -232,17 +233,13 @@ class ParticleFilterLocalizer(Node):
         self.initial_guess_std = [5, 5, np.pi / 4]
 
         # TODO: Parameterize topic name
-        self.gnss_odom_sub = self.create_subscription(
+        self.create_subscription(
             GPSFix, "/gnss/gpsfix", self.gpsFixCb, sensor_qos_profile
         )
 
-        self.imu_sub = self.create_subscription(
-            Imu, "/gnss/imu", self.imuCb, sensor_qos_profile
-        )
+        self.create_subscription(Imu, "/gnss/imu", self.imuCb, sensor_qos_profile)
 
-        self.cmd_vel_sub = self.create_subscription(
-            Twist, "/cmd_vel", self.cmdVelCb, 10
-        )
+        self.create_subscription(Twist, "/cmd_vel", self.cmdVelCb, 10)
 
     def cmdVelCb(self, msg: Twist):
         u = (msg.angular.z, msg.linear.x)
@@ -271,8 +268,8 @@ class ParticleFilterLocalizer(Node):
             )
             self.plotParticles()
 
-        if len(self.ego_pos_hist) > 0:
-            previous_yaw = self.ego_pos_hist[-1][2]
+        if len(self.yaw_hist) > 0:
+            previous_yaw = self.yaw_hist[-1]
         else:
             previous_yaw = unfiltered_yaw
 
@@ -286,10 +283,10 @@ class ParticleFilterLocalizer(Node):
         else:
             ego_yaw = unfiltered_yaw
 
-        self.ego_pos_hist.append([ego_x, ego_y, ego_yaw])
+        # self.ego_pos_hist.append([ego_x, ego_y, ego_yaw])
         self.ego_vel_hist.append(msg.speed)
 
-        if len(self.ego_pos_hist) % 10 == 0:
+        if len(self.ego_pos_hist) % 10 == 0 and len(self.ego_pos_hist) > 0:
             points = np.asarray(self.ego_pos_hist)
 
             # plt.figure()
@@ -299,7 +296,7 @@ class ParticleFilterLocalizer(Node):
                 f"std: {np.std(points, axis=0)}, acc: {msg.err_horz}, {msg.err_vert}"
             )
 
-            ax2.plot(range(len(points)), points[:, 2])
+            ax2.plot(self.yaw_hist)
 
             imu_hist = np.asarray(self.imu_hist)
 
@@ -312,17 +309,26 @@ class ParticleFilterLocalizer(Node):
 
             ax5.plot(range(len(self.ego_vel_hist)), self.ego_vel_hist, c="blue")
             ax5.plot(imu_hist[::10, 1], c="green")
-            ax5.plot(range(len(points)), points[:, 2], c="red")
+            ax5.plot(self.yaw_hist, c="red")
 
             plt.savefig("gnss.png")
             plt.close(fig)
 
             if len(self.ego_pos_hist) > 100:
                 self.ego_pos_hist = self.ego_pos_hist[10:]
+            if len(self.yaw_hist) > 100:
+                self.yaw_hist = self.yaw_hist[10:]
             if len(self.ego_vel_hist) > 100:
                 self.ego_vel_hist = self.ego_vel_hist[10:]
             if len(self.imu_hist) > 100:
                 self.imu_hist = self.imu_hist[10:]
+
+        if neff(self.weights) < self.num_particles / 2:
+            indexes = systematic_resample(self.weights)
+            resample_from_index(self.particles, self.weights, indexes)
+            assert np.allclose(self.weights, 1 / N)
+        mu, var = estimate(self.particles, self.weights)
+        self.ego_pos_hist.append(mu)
 
     def imuCb(self, msg: Imu):
 
