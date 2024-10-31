@@ -13,7 +13,7 @@ from tf2_ros import TransformBroadcaster
 import utm
 
 # ROS message definitions
-from geometry_msgs.msg import PoseWithCovarianceStamped, TransformStamped
+from geometry_msgs.msg import PoseWithCovarianceStamped, TransformStamped, Twist
 from gps_msgs.msg import GPSFix
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import Imu
@@ -225,6 +225,12 @@ class ParticleFilterLocalizer(Node):
 
         self.tf_broadcaster = TransformBroadcaster(self)
 
+        self.num_particles = 100
+
+        self.particles = None
+        self.weights = np.ones(self.num_particles) / self.num_particles
+        self.initial_guess_std = [5, 5, np.pi / 4]
+
         # TODO: Parameterize topic name
         self.gnss_odom_sub = self.create_subscription(
             GPSFix, "/gnss/gpsfix", self.gpsFixCb, sensor_qos_profile
@@ -234,6 +240,21 @@ class ParticleFilterLocalizer(Node):
             Imu, "/gnss/imu", self.imuCb, sensor_qos_profile
         )
 
+        self.cmd_vel_sub = self.create_subscription(
+            Twist, "/cmd_vel", self.cmdVelCb, 10
+        )
+
+    def cmdVelCb(self, msg: Twist):
+        u = (msg.angular.z, msg.linear.x)
+        updateFromMotionCommand(self.particles, u=u, std=(0.2, 0.05))
+        self.plotParticles()
+
+    def plotParticles(self):
+        fig = plt.figure()
+        plt.scatter(self.particles[:, 0], self.particles[:, 1], alpha=0.2, color="g")
+        plt.savefig("particles.png")
+        plt.close(fig)
+
     def gpsFixCb(self, msg: GPSFix):
 
         ego_x, ego_y, _, __ = utm.from_latlon(msg.latitude, msg.longitude)
@@ -242,6 +263,14 @@ class ParticleFilterLocalizer(Node):
         ego_y = ego_y - self.y0
 
         unfiltered_yaw = trueTrackToEnuRads(msg.track)
+
+        if self.particles is None:
+            initial_x = [ego_x, ego_y, unfiltered_yaw]
+            self.particles = create_gaussian_particles(
+                mean=initial_x, std=self.initial_guess_std, N=self.num_particles
+            )
+            self.plotParticles()
+
         if len(self.ego_pos_hist) > 0:
             previous_yaw = self.ego_pos_hist[-1][2]
         else:
