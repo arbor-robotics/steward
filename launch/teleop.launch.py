@@ -3,8 +3,12 @@ from os import name, path, environ, getcwd
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.actions import IncludeLaunchDescription, SetEnvironmentVariable
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
-from launch.actions import ExecuteProcess, OpaqueFunction
+from launch.actions import (
+    DeclareLaunchArgument,
+    IncludeLaunchDescription,
+    ExecuteProcess,
+    OpaqueFunction,
+)
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration, Command, TextSubstitution
 from launch_ros.actions import Node
@@ -230,6 +234,26 @@ def generate_launch_description():
 
     behavior_fsm = Node(package="behavior", executable="fsm")
 
+    swiftnav_interface = Node(
+        package="swiftnav_ros2_driver",
+        executable="sbp-to-ros",
+        parameters=[
+            path.join(
+                get_package_share_directory("swiftnav_ros2_driver"),
+                "config",
+                "settings.yaml",
+            )
+        ],
+        remappings=[
+            ("imu", "/gnss/imu"),
+            ("gpsfix", "/gnss/gpsfix"),
+            ("navsatfix", "/gnss/navsatfix"),
+            ("baseline", "/gnss/baseline"),
+            ("timereference", "/gnss/timereference"),
+            ("twistwithcovariancestamped", "/gnss/twist"),
+        ],
+    )
+
     return LaunchDescription(
         [
             DeclareLaunchArgument(
@@ -240,6 +264,7 @@ def generate_launch_description():
             # INTERFACES
             OpaqueFunction(function=zed_launch_setup),  # camera
             # gnss,
+            swiftnav_interface,
             rosbridge_server,
             warthog_bridge,
             # PERCEPTION
