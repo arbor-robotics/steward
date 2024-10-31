@@ -6,7 +6,7 @@ from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPo
 
 # Messages
 from nav_msgs.msg import Odometry
-from sensor_msgs.msg import NavSatFix
+from sensor_msgs.msg import NavSatFix, Imu
 from std_msgs.msg import Header, Float32
 
 from tf2_ros import TransformException
@@ -19,6 +19,12 @@ from pynmea2.types import talker
 import serial
 import utm
 
+from sbp.client.drivers.pyserial_driver import PySerialDriver
+from sbp.client import Handler, Framer
+from sbp.navigation import SBP_MSG_UTC_TIME, SBP_MSG_POS_ECEF, MsgPosLLHCov
+from sbp.observation import MsgObs
+from sbp.imu import MsgImuRaw
+
 
 class InterfaceNode(Node):
     def __init__(self):
@@ -26,11 +32,12 @@ class InterfaceNode(Node):
 
         self.setUpParameters()
 
-        self.ser = serial.Serial("/dev/ttyUSB0", 115200, timeout=1)
+        # self.ser = serial.Serial("/dev/ttyUSB0", 115200, timeout=1)
 
         self.odom_pub = self.create_publisher(Odometry, "/gnss/odom", 10)
         self.fix_pub = self.create_publisher(NavSatFix, "/gnss/fix", 10)
         self.yaw_pub = self.create_publisher(Float32, "/gnss/yaw", 10)
+        self.imu_pub = self.create_publisher(Imu, "/gnss/imu", 10)
 
         self.create_timer(0.01, self.checkGnssMessages)
 
@@ -38,13 +45,64 @@ class InterfaceNode(Node):
         self.track_deg = None
         self.speed = None
 
-    def publishOdometry(self, sentence: pynmea2.GGA):
+        # Open a connection to Piksi using the default baud rate (1Mbaud)
+        with PySerialDriver("/dev/ttyUSB0", baud=115200) as driver:
+            with Handler(Framer(driver.read, None, verbose=True)) as source:
+                try:
+                    for msg, metadata in source:
+                        print(type(msg))
+
+                        if isinstance(msg, MsgObs):
+                            # print(msg)
+                            pass
+                        elif isinstance(msg, MsgImuRaw):
+                            # print(msg)
+                            self.publishImu(msg)
+                            pass
+                        elif isinstance(msg, MsgPosLLHCov):
+                            print(msg)
+                            self.publishFix(msg)
+                            self.publishOdometry(msg)
+                        # Print out the N, E, D coordinates of the baseline
+                        # print("%.4f,%.4f,%.4f" % (msg.n * 1e-3, msg.e * 1e-3, msg.d * 1e-3))
+                except KeyboardInterrupt:
+                    pass
+
+    def publishFix(self, msg: MsgPosLLHCov):
+        fix_msg = NavSatFix()
+        fix_msg.header.stamp = self.get_clock().now().to_msg()
+        fix_msg.header.frame_id = "earth"
+
+        fix_msg.latitude = msg.lat
+        fix_msg.longitude = msg.lon
+        fix_msg.altitude = msg.height
+
+        self.fix_pub.publish(fix_msg)
+
+    def publishImu(self, swift_msg: MsgImuRaw):
+        imu_msg = Imu()
+
+        N_BITS = 2**16
+
+        # print(type(swift_msg.acc_x))
+        print(swift_msg.acc_z)
+        # imu_msg.linear_acceleration.x = float(swift_msg.acc_x)/N_BITS
+        # imu_msg.linear_acceleration.y = float(swift_msg.acc_x)/N_BITS
+        # imu_msg.linear_acceleration.z = float(swift_msg.acc_x)/N_BITS
+
+        # imu_msg.angular_velocity.x = swift_msg.gyr_x
+        # imu_msg.angular_velocity.y = swift_msg.gyr_y
+        # imu_msg.angular_velocity.z = swift_msg.gyr_z
+
+        self.imu_pub.publish(imu_msg)
+
+    def publishOdometry(self, swift_msg: MsgPosLLHCov):
         msg = Odometry()
 
         lat, lon, alt = self.get_parameter("map_origin_lat_lon_alt_degrees").value
         origin_x, origin_y, _, __ = utm.from_latlon(lat, lon)
 
-        ego_x, ego_y, _, __ = utm.from_latlon(sentence.latitude, sentence.longitude)
+        ego_x, ego_y, _, __ = utm.from_latlon(swift_msg.lat, swift_msg.lon)
 
         ego_x = ego_x - origin_x
         ego_y = ego_y - origin_y
@@ -57,18 +115,6 @@ class InterfaceNode(Node):
         msg.header.frame_id = "map"
 
         self.odom_pub.publish(msg)
-
-        fix_msg = NavSatFix()
-        fix_msg.header.stamp = self.get_clock().now().to_msg()
-        fix_msg.header.frame_id = "earth"
-
-        fix_msg.latitude = sentence.latitude
-        fix_msg.longitude = sentence.longitude
-
-        self.fix_pub.publish(fix_msg)
-
-        if self.yaw_enu is not None:
-            self.yaw_pub.publish(Float32(data=self.yaw_enu))
 
     def trueTrackToEnuRads(self, track_deg: float):
         enu_yaw = track_deg

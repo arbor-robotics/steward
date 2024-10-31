@@ -7,12 +7,14 @@ from numpy.linalg import norm
 from numpy.random import randn
 import scipy.stats
 import rclpy
-from rclpy.node import Node
+from rclpy.node import Node, ParameterDescriptor, ParameterType
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 from tf2_ros import TransformBroadcaster
+import utm
 
 # ROS message definitions
 from geometry_msgs.msg import PoseWithCovarianceStamped, TransformStamped
+from gps_msgs.msg import GPSFix
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import Imu
 
@@ -39,7 +41,7 @@ def create_gaussian_particles(mean, std, N):
     return particles
 
 
-def predict(particles, u, std, dt=1.0):
+def updateFromMotionCommand(particles, u, std, dt=1.0):
     """move according to control input u (heading change, velocity)
     with noise Q (std heading change, std velocity)`"""
 
@@ -64,6 +66,37 @@ def updateFromLandmarkDistances(particles, weights, z, sensor_std_error, landmar
 
     weights += 1.0e-300  # avoid round-off to zero
     weights /= sum(weights)  # normalize
+
+
+def updateFromGnssPosition(particles: np.ndarray, weights, z, sensor_std_error):
+
+    weights *= scipy.stats.norm(particles[:, :2]).pdf(z)
+
+    # for i, landmark in enumerate(landmarks):
+    # distance = np.linalg.norm(particles[:, 0:2] - landmark, axis=1)
+
+    # This says, how likely is it that this particle
+    # is REALLY this far away, given a distance measurement z?
+    # weights *= scipy.stats.norm(distance, sensor_std_error).pdf(z[i])
+
+    weights += 1.0e-300  # avoid round-off to zero
+    weights /= sum(weights)  # normalize
+
+
+def trueTrackToEnuRads(track_deg: float):
+    enu_yaw = track_deg
+
+    enu_yaw -= 90
+
+    enu_yaw = 360 - enu_yaw
+
+    if enu_yaw < 0:
+        enu_yaw += 360
+    elif enu_yaw > 360:
+        enu_yaw -= 360
+
+    enu_yaw *= np.pi / 180.0
+    return enu_yaw
 
 
 def estimate(particles, weights):
@@ -94,10 +127,21 @@ def run_pf1(
     ylim=(0, 20),
     initial_x=None,
 ):
-    landmarks = np.array([[-1, 2], [5, 10], [12, 14], [18, 21]])
-    NL = len(landmarks)
+    """Run the particle filter for a number of iterations
 
-    plt.figure()
+    Args:
+        N (int): The number of particles
+        iters (int, optional): The number of iterations. Defaults to 18.
+        sensor_std_err (float, optional): Standard deviation of the sensor reading. Defaults to 0.1.
+        plot_particles (bool, optional): Defaults to False.
+        xlim (tuple, optional): _description_. Defaults to (0, 20).
+        ylim (tuple, optional): _description_. Defaults to (0, 20).
+        initial_x (_type_, optional): Estimate of initial starting position. Defaults to None.
+    """
+    # landmarks = np.array([[-1, 2], [5, 10], [12, 14], [18, 21]])
+    # NL = len(landmarks)
+
+    # plt.figure()
 
     # create particles and weights
     if initial_x is not None:
@@ -120,10 +164,10 @@ def run_pf1(
         robot_pos += (1, 1)
 
         # distance from robot to each landmark
-        zs = norm(landmarks - robot_pos, axis=1) + (randn(NL) * sensor_std_err)
+        # zs = norm(landmarks - robot_pos, axis=1) + (randn(NL) * sensor_std_err)
 
         # move diagonally forward to (x+1, x+1)
-        predict(particles, u=(0.00, 1.414), std=(0.2, 0.05))
+        updateFromMotionCommand(particles, u=(0.00, 1.414), std=(0.2, 0.05))
 
         # incorporate measurements
         updateFromLandmarkDistances(
@@ -156,7 +200,7 @@ def run_pf1(
     plt.show()
 
 
-run_pf1(N=5000, plot_particles=False, initial_x=(1, 1, 1))
+# run_pf1(N=5000, plot_particles=False, initial_x=(1, 1, 1))
 
 
 class ParticleFilterLocalizer(Node):
@@ -170,19 +214,109 @@ class ParticleFilterLocalizer(Node):
             depth=10,
         )
 
+        self.setUpParameters()
+
+        self.ego_pos_hist = []
+        self.ego_vel_hist = []
+        self.imu_hist = []
+
+        lat, lon, alt = self.get_parameter("map_origin_lat_lon_alt_degrees").value
+        self.x0, self.y0, _, __ = utm.from_latlon(lat, lon)
+
         self.tf_broadcaster = TransformBroadcaster(self)
 
         # TODO: Parameterize topic name
         self.gnss_odom_sub = self.create_subscription(
-            Odometry, "/gnss/odom", self.poseCb, sensor_qos_profile
+            GPSFix, "/gnss/gpsfix", self.gpsFixCb, sensor_qos_profile
         )
 
         self.imu_sub = self.create_subscription(
-            Odometry, "/gps/duro/imu", self.imuCb, sensor_qos_profile
+            Imu, "/gnss/imu", self.imuCb, sensor_qos_profile
         )
 
+    def gpsFixCb(self, msg: GPSFix):
+
+        ego_x, ego_y, _, __ = utm.from_latlon(msg.latitude, msg.longitude)
+
+        ego_x = ego_x - self.x0
+        ego_y = ego_y - self.y0
+
+        unfiltered_yaw = trueTrackToEnuRads(msg.track)
+        if len(self.ego_pos_hist) > 0:
+            previous_yaw = self.ego_pos_hist[-1][2]
+        else:
+            previous_yaw = unfiltered_yaw
+
+        if previous_yaw - unfiltered_yaw > 0.5:
+            print("YAW JUMP")
+            if msg.speed > 0.6:
+                ego_yaw = unfiltered_yaw
+                print(f"Speed was {msg.speed}, accepting jump")
+            else:
+                ego_yaw = previous_yaw
+        else:
+            ego_yaw = unfiltered_yaw
+
+        self.ego_pos_hist.append([ego_x, ego_y, ego_yaw])
+        self.ego_vel_hist.append(msg.speed)
+
+        if len(self.ego_pos_hist) % 10 == 0:
+            points = np.asarray(self.ego_pos_hist)
+
+            # plt.figure()
+            fig, ([ax1, ax2, ax3], [ax4, ax5, ax6]) = plt.subplots(2, 3)
+            ax1.scatter(points[:, 0], points[:, 1])
+            ax1.set_title(
+                f"std: {np.std(points, axis=0)}, acc: {msg.err_horz}, {msg.err_vert}"
+            )
+
+            ax2.plot(range(len(points)), points[:, 2])
+
+            imu_hist = np.asarray(self.imu_hist)
+
+            ax3.plot(range(len(imu_hist)), imu_hist[:, 0], c="red")
+            ax3.plot(range(len(imu_hist)), imu_hist[:, 1], c="green")
+            ax3.plot(range(len(imu_hist)), imu_hist[:, 2], c="blue")
+            ax3.set_title("Linear accel")
+
+            ax4.plot(range(len(self.ego_vel_hist)), self.ego_vel_hist, c="blue")
+
+            ax5.plot(range(len(self.ego_vel_hist)), self.ego_vel_hist, c="blue")
+            ax5.plot(imu_hist[::10, 1], c="green")
+            ax5.plot(range(len(points)), points[:, 2], c="red")
+
+            plt.savefig("gnss.png")
+            plt.close(fig)
+
+            if len(self.ego_pos_hist) > 100:
+                self.ego_pos_hist = self.ego_pos_hist[10:]
+            if len(self.ego_vel_hist) > 100:
+                self.ego_vel_hist = self.ego_vel_hist[10:]
+            if len(self.imu_hist) > 100:
+                self.imu_hist = self.imu_hist[10:]
+
     def imuCb(self, msg: Imu):
-        raise NotImplementedError
+
+        linacc = [
+            msg.linear_acceleration.x,
+            msg.linear_acceleration.y,
+            msg.linear_acceleration.z,
+        ]
+        angvel = [
+            msg.angular_velocity.x,
+            msg.angular_velocity.y,
+            msg.angular_velocity.z,
+        ]
+
+        self.imu_hist.append(linacc + angvel)
+
+    def setUpParameters(self):
+        param_desc = ParameterDescriptor()
+        param_desc.type = ParameterType.PARAMETER_DOUBLE_ARRAY
+        self.declare_parameter(
+            "map_origin_lat_lon_alt_degrees",
+            [40.4431653, -79.9402844, 288.0961589],
+        )
 
     def poseCb(self, msg: PoseWithCovarianceStamped):
         t = TransformStamped()
