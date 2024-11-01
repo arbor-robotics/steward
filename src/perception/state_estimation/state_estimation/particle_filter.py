@@ -11,12 +11,15 @@ from rclpy.node import Node, ParameterDescriptor, ParameterType
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 from tf2_ros import TransformBroadcaster
 import utm
+import pandas as pd
 
 # ROS message definitions
 from geometry_msgs.msg import PoseWithCovarianceStamped, TransformStamped, Twist
 from gps_msgs.msg import GPSFix
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import Imu
+
+from tqdm import tqdm, trange
 
 """
 ADAPTED FROM ROGER LABBE: https://github.com/rlabbe/Kalman-and-Bayesian-Filters-in-Python/blob/master/12-Particle-Filters.ipynb
@@ -138,10 +141,10 @@ def run_pf1(
         ylim (tuple, optional): _description_. Defaults to (0, 20).
         initial_x (_type_, optional): Estimate of initial starting position. Defaults to None.
     """
-    # landmarks = np.array([[-1, 2], [5, 10], [12, 14], [18, 21]])
-    # NL = len(landmarks)
+    landmarks = np.array([[-1, 2], [5, 10], [12, 14], [18, 21]])
+    NL = len(landmarks)
 
-    # plt.figure()
+    plt.figure()
 
     # create particles and weights
     if initial_x is not None:
@@ -164,7 +167,7 @@ def run_pf1(
         robot_pos += (1, 1)
 
         # distance from robot to each landmark
-        # zs = norm(landmarks - robot_pos, axis=1) + (randn(NL) * sensor_std_err)
+        zs = norm(landmarks - robot_pos, axis=1) + (randn(NL) * sensor_std_err)
 
         # move diagonally forward to (x+1, x+1)
         updateFromMotionCommand(particles, u=(0.00, 1.414), std=(0.2, 0.05))
@@ -200,186 +203,158 @@ def run_pf1(
     plt.show()
 
 
-# run_pf1(N=5000, plot_particles=False, initial_x=(1, 1, 1))
+def plotParticles(particles: np.ndarray, weights, limit=50):
+    fig = plt.figure()
+
+    quiver_u = np.cos(particles[:limit, 2])
+    quiver_v = np.sin(particles[:limit, 2])
+    plt.quiver(
+        particles[:limit, 0], particles[:limit, 1], quiver_u, quiver_v, weights[:limit]
+    )
+    plt.colorbar()
+    fig.savefig("particles.png")
 
 
-class ParticleFilterLocalizer(Node):
-    def __init__(self):
-        super().__init__("particle_filter_localizer")
+def updateFromTwist(particles, u, std, dt=1.0):
+    """move according to control input u (heading change, velocity)
+    with noise Q (std heading change, std velocity)`"""
 
-        sensor_qos_profile = QoSProfile(
-            reliability=ReliabilityPolicy.BEST_EFFORT,
-            durability=DurabilityPolicy.VOLATILE,
-            history=HistoryPolicy.KEEP_LAST,
-            depth=10,
-        )
+    N = len(particles)
+    # update heading
+    particles[:, 2] += u[0] + (randn(N) * std[0])
+    particles[:, 2] %= 2 * np.pi
 
-        self.setUpParameters()
-
-        self.ego_pos_hist = []
-        self.yaw_hist = []
-        self.ego_vel_hist = []
-        self.imu_hist = []
-
-        lat, lon, alt = self.get_parameter("map_origin_lat_lon_alt_degrees").value
-        self.x0, self.y0, _, __ = utm.from_latlon(lat, lon)
-
-        self.tf_broadcaster = TransformBroadcaster(self)
-
-        self.num_particles = 100
-
-        self.particles = None
-        self.weights = np.ones(self.num_particles) / self.num_particles
-        self.initial_guess_std = [5, 5, np.pi / 4]
-
-        # TODO: Parameterize topic name
-        self.create_subscription(
-            GPSFix, "/gnss/gpsfix", self.gpsFixCb, sensor_qos_profile
-        )
-
-        self.create_subscription(Imu, "/gnss/imu", self.imuCb, sensor_qos_profile)
-
-        self.create_timer(0.1, self.makeEstimate)
-
-    def makeEstimate(self):
-        if self.particles is None:
-            return
-        mean, var = estimate(self.particles, self.weights)
-        self.plotParticles()
-
-    def plotParticles(self):
-        fig = plt.figure()
-        plt.scatter(self.particles[:, 0], self.particles[:, 1], alpha=0.2, color="g")
-        plt.savefig("particles.png")
-        plt.close(fig)
-
-    def gpsFixCb(self, msg: GPSFix):
-
-        ego_x, ego_y, _, __ = utm.from_latlon(msg.latitude, msg.longitude)
-
-        ego_x = ego_x - self.x0
-        ego_y = ego_y - self.y0
-
-        unfiltered_yaw = trueTrackToEnuRads(msg.track)
-
-        if self.particles is None:
-            initial_x = [ego_x, ego_y, unfiltered_yaw]
-            self.particles = create_gaussian_particles(
-                mean=initial_x, std=self.initial_guess_std, N=self.num_particles
-            )
-            self.plotParticles()
-
-        if len(self.yaw_hist) > 0:
-            previous_yaw = self.yaw_hist[-1]
-        else:
-            previous_yaw = unfiltered_yaw
-
-        if previous_yaw - unfiltered_yaw > 0.5:
-            print("YAW JUMP")
-            if msg.speed > 0.6:
-                ego_yaw = unfiltered_yaw
-                print(f"Speed was {msg.speed}, accepting jump")
-            else:
-                ego_yaw = previous_yaw
-        else:
-            ego_yaw = unfiltered_yaw
-
-        # self.ego_pos_hist.append([ego_x, ego_y, ego_yaw])
-        self.ego_vel_hist.append(msg.speed)
-
-        if len(self.ego_pos_hist) % 10 == 0 and len(self.ego_pos_hist) > 0:
-            points = np.asarray(self.ego_pos_hist)
-
-            # plt.figure()
-            fig, ([ax1, ax2, ax3], [ax4, ax5, ax6]) = plt.subplots(2, 3)
-            ax1.scatter(points[:, 0], points[:, 1])
-            ax1.set_title(
-                f"std: {np.std(points, axis=0)}, acc: {msg.err_horz}, {msg.err_vert}"
-            )
-
-            ax2.plot(self.yaw_hist)
-
-            imu_hist = np.asarray(self.imu_hist)
-
-            ax3.plot(range(len(imu_hist)), imu_hist[:, 0], c="red")
-            ax3.plot(range(len(imu_hist)), imu_hist[:, 1], c="green")
-            ax3.plot(range(len(imu_hist)), imu_hist[:, 2], c="blue")
-            ax3.set_title("Linear accel")
-
-            ax4.plot(range(len(self.ego_vel_hist)), self.ego_vel_hist, c="blue")
-
-            ax5.plot(range(len(self.ego_vel_hist)), self.ego_vel_hist, c="blue")
-            ax5.plot(imu_hist[::10, 1], c="green")
-            ax5.plot(self.yaw_hist, c="red")
-
-            plt.savefig("gnss.png")
-            plt.close(fig)
-
-            if len(self.ego_pos_hist) > 100:
-                self.ego_pos_hist = self.ego_pos_hist[10:]
-            if len(self.yaw_hist) > 100:
-                self.yaw_hist = self.yaw_hist[10:]
-            if len(self.ego_vel_hist) > 100:
-                self.ego_vel_hist = self.ego_vel_hist[10:]
-            if len(self.imu_hist) > 100:
-                self.imu_hist = self.imu_hist[10:]
-
-        if neff(self.weights) < self.num_particles / 2:
-            indexes = systematic_resample(self.weights)
-            resample_from_index(self.particles, self.weights, indexes)
-            assert np.allclose(self.weights, 1 / N)
-        mu, var = estimate(self.particles, self.weights)
-        self.ego_pos_hist.append(mu)
-
-    def imuCb(self, msg: Imu):
-
-        linacc = [
-            msg.linear_acceleration.x,
-            msg.linear_acceleration.y,
-            msg.linear_acceleration.z,
-        ]
-        angvel = [
-            msg.angular_velocity.x,
-            msg.angular_velocity.y,
-            msg.angular_velocity.z,
-        ]
-
-        self.imu_hist.append(linacc + angvel)
-
-    def setUpParameters(self):
-        param_desc = ParameterDescriptor()
-        param_desc.type = ParameterType.PARAMETER_DOUBLE_ARRAY
-        self.declare_parameter(
-            "map_origin_lat_lon_alt_degrees",
-            [40.4431653, -79.9402844, 288.0961589],
-        )
-
-    def poseCb(self, msg: PoseWithCovarianceStamped):
-        t = TransformStamped()
-
-        t.header = msg.header
-        t.child_frame_id = "base_link"  # TODO: Change to 'gnss'
-        t.transform.translation.x = msg.pose.pose.position.x
-        t.transform.translation.y = msg.pose.pose.position.y
-        t.transform.translation.z = msg.pose.pose.position.z
-        t.transform.rotation = msg.pose.pose.orientation
-
-        self.tf_broadcaster.sendTransform(t)
+    # move in the (noisy) commanded direction
+    dist = (u[1] * dt) + (randn(N) * std[1])
+    particles[:, 0] += np.cos(particles[:, 2]) * dist
+    particles[:, 1] += np.sin(particles[:, 2]) * dist
 
 
-def main(args=None):
-    rclpy.init(args=args)
+def updateFromGnss(particles, weights, z, sensor_std_error):
 
-    broadcaster = ParticleFilterLocalizer()
+    # z = [pos_x, pos_y]
 
-    rclpy.spin(broadcaster)
+    # This says, how likely is it that this particle
+    # is REALLY this far away, given a distance measurement z?
+    likelihooods = np.mean(
+        scipy.stats.norm(particles[:, :2], sensor_std_error).pdf(z), axis=1
+    )
+    weights *= likelihooods
 
-    # Destroy the node explicitly
-    # (optional - otherwise it will be done automatically
-    # when the garbage collector destroys the node object)
-    broadcaster.destroy_node()
-    rclpy.shutdown()
+    weights += 1.0e-300  # avoid round-off to zero
+    weights /= sum(weights)  # normalize
 
 
-if __name__ == "__main__":
-    main()
+# Start by loading our sensor data
+imu_df: pd.DataFrame = pd.read_pickle("data/pickles/imu.pkl")
+print(imu_df.columns)
+twists_df: pd.DataFrame = pd.read_pickle("data/pickles/twists.pkl")
+print(twists_df.columns)
+fixes_df: pd.DataFrame = pd.read_pickle("data/pickles/fixes.pkl")
+print(fixes_df.columns)
+
+# Filter readings by time
+imu_df["t"] -= imu_df["t"].min()
+fixes_df["t"] -= fixes_df["t"].min()
+twists_df["t"] -= twists_df["t"].min()
+
+start_time = 0.0
+end_time = 195.0
+
+fixes_df = fixes_df[fixes_df["t"] > start_time]
+fixes_df = fixes_df[fixes_df["t"] < end_time]
+imu_df = imu_df[imu_df["t"] > start_time]
+imu_df = imu_df[imu_df["t"] < end_time]
+twists_df = twists_df[twists_df["t"] > start_time]
+twists_df = twists_df[twists_df["t"] < end_time]
+
+# Plot our sensor data
+
+print(fixes_df["pos_x"])
+plt.gca().set_aspect("equal")
+colors = fixes_df["t"].to_numpy()
+yaw_np = fixes_df["yaw"].to_numpy()
+quiver_u = np.cos(yaw_np)
+quiver_v = np.sin(yaw_np)
+
+plt.quiver(
+    fixes_df["pos_x"].to_numpy(),
+    fixes_df["pos_y"].to_numpy(),
+    quiver_u,
+    quiver_v,
+    colors,
+)
+plt.colorbar()
+
+# plt.plot(fixes_df["t"].to_numpy(), fixes_df["speed"].to_numpy())
+# plt.show()
+
+# Finally, run the filter
+initial_x = [
+    fixes_df["pos_x"].iloc[0],
+    fixes_df["pos_y"].iloc[0],
+    fixes_df["yaw"].iloc[0],
+]
+initial_std = [5, 5, np.pi / 4]
+u_std = [0.2, 0.05]
+sensor_std = [5.0, 5.0]
+N = 500
+
+print(f"Initial x: {initial_x}")
+particles = create_gaussian_particles(mean=initial_x, std=initial_std, N=N)
+weights = np.ones(N) / N
+plotParticles(particles, weights)
+
+xs = []
+
+
+def atTime(df: pd.DataFrame, t: float):
+    return df[df["t"] > t].iloc[0]
+
+
+dt = 0.1
+timesteps = np.arange(start_time, end_time, dt)
+
+
+for t in tqdm(timesteps):
+    # 1. Update motion from IMU
+    twist = atTime(twists_df, t)
+    fix = atTime(fixes_df, t)
+
+    u = [twist["linear_vel_z"], fix["speed"]]
+    updateFromTwist(particles, u, [u_std[0], fix["speed_err"]], dt)
+
+    # 2. Update from GNSS
+    z = [fix["pos_x"], fix["pos_y"]]
+    sensor_std_error = [fix["x_err"], fix["y_err"]]
+    updateFromGnss(particles, weights, z, sensor_std_error)
+
+    # 3. Resample
+    if neff(weights) < N / 2:
+        indexes = systematic_resample(weights)
+        resample_from_index(particles, weights, indexes)
+        assert np.allclose(weights, 1 / N)
+    mu, var = estimate(particles, weights)
+    xs.append(mu)
+
+    # if t % 10 == 0:
+    #     plotParticles(particles, weights)
+
+xs = np.asarray(xs)
+
+fig, (ax1) = plt.subplots(1, 1)
+
+ax1.quiver(
+    fixes_df["pos_x"].to_numpy(),
+    fixes_df["pos_y"].to_numpy(),
+    quiver_u,
+    quiver_v,
+    colors,
+)
+# ax1.colorbar()
+# ax1.
+ax1.plot(xs[:, 0], xs[:, 1], c="red")
+
+fig.savefig("result.png")
+plt.show()
+print(xs)
