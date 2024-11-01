@@ -69,9 +69,9 @@ class ParticleFilterLocalizer(Node):
         )
 
         self.create_subscription(Imu, "/gnss/imu", self.imuCb, sensor_qos_profile)
-        # self.create_subscription(
-        #     Odometry, "/odom/wheel", self.wheelCb, sensor_qos_profile
-        # )
+        self.create_subscription(
+            Odometry, "/odom/wheel", self.wheelCb, sensor_qos_profile
+        )
         self.create_subscription(
             TwistWithCovarianceStamped, "/gnss/twist", self.twistCb, sensor_qos_profile
         )
@@ -82,6 +82,7 @@ class ParticleFilterLocalizer(Node):
         self.twists = []
         self.fixes = []
         self.imus = []
+        self.wheels = []
 
     def saveData(self):
 
@@ -129,6 +130,11 @@ class ParticleFilterLocalizer(Node):
             ],
         ).to_pickle("fixes.pkl")
 
+        pd.DataFrame(
+            self.wheels,
+            columns=["t", "linear_vel_x", "linear_vel_y", "angular_vel_z"],
+        ).to_pickle("wheels.pkl")
+
         exit()
 
     def setUpParameters(self):
@@ -173,8 +179,14 @@ class ParticleFilterLocalizer(Node):
         # print(entry)
 
     def wheelCb(self, msg: Odometry):
+        t = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
         cov = np.asarray(msg.twist.covariance).reshape((6, 6))
-        print(cov)
+
+        lin = msg.twist.twist.linear
+        yawrate = msg.twist.twist.angular.z
+        entry = [t, lin.x, lin.y, yawrate]
+
+        self.wheels.append(entry)
 
     def twistCb(self, msg: TwistWithCovarianceStamped):
 
@@ -191,7 +203,7 @@ def main(args=None):
 
     node = ParticleFilterLocalizer()
 
-    # rclpy.spin(node)
+    rclpy.spin(node)
 
     imu_df = pd.read_pickle("data/pickles/imu.pkl")
     print(imu_df)
