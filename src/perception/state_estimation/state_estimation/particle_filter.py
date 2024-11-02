@@ -403,33 +403,8 @@ ax5.set_title("Wheel twists")
 print(wheels_df["linear_vel_x"])
 
 
-plt.savefig("sensor_data.png")
-
 # plt.plot(fixes_df["t"].to_numpy(), fixes_df["speed"].to_numpy())
 # plt.show()
-
-# Sanity check of IMU data
-x = []
-
-exit()
-
-# Finally, run the filter
-initial_x = [
-    fixes_df["pos_x"].iloc[0],
-    fixes_df["pos_y"].iloc[0],
-    fixes_df["yaw"].iloc[0],
-    fixes_df["speed"].iloc[0],
-]
-initial_std = [5.0, 5.0, np.pi / 4, 1.0]
-u_std = [0.2, 0.05]
-sensor_std = [5.0, 5.0]
-N = 500
-
-print(f"Initial x: {initial_x}")
-particles = create_gaussian_particles(mean=initial_x, std=initial_std, N=N)
-weights = np.ones(N) / N
-xs = []
-plotParticles(particles, weights, xs)
 
 
 def atTime(df: pd.DataFrame, t: float, tol=0.1):
@@ -440,6 +415,71 @@ def atTime(df: pd.DataFrame, t: float, tol=0.1):
         return row
     except IndexError as e:
         return None
+
+
+# Sanity check of IMU data
+x = np.zeros(5)
+x = [
+    fixes_df["pos_x"].iloc[0],
+    fixes_df["pos_y"].iloc[0],
+    0.0,
+    0.0,
+    fixes_df["yaw"].iloc[0],
+]
+
+dt = 0.1
+timesteps = np.arange(start_time, end_time, dt)
+
+xs = []
+
+linear_x_mult = 1
+linear_y_mult = 0
+angular_z_mult = 1
+
+for t in tqdm(timesteps):
+
+    imu = atTime(imu_df, t)
+
+    prev_t = imu["t"]
+
+    # Start by updating velocities
+    x[2] += imu["linear_acc_x"] * dt * linear_x_mult
+    x[3] += imu["linear_acc_y"] * dt * linear_y_mult
+
+    # Now update positions
+    x[0] += x[2] * dt * np.cos(x[4])
+    x[1] += x[3] * dt * np.sin(x[4])
+
+    # Finally, update yaw
+    x[4] += imu["angular_vel_z"] * angular_z_mult
+
+    xs.append(x.copy())
+
+xs = np.asarray(xs)
+print(xs)
+ax1.plot(xs[:, 0], xs[:, 1], c="red")
+
+plt.savefig("sensor_data.png")
+
+exit()
+
+# Finally, run the filter
+initial_x = [
+    fixes_df["pos_x"].iloc[0],
+    fixes_df["pos_y"].iloc[0],
+    fixes_df["yaw"].iloc[0],
+    fixes_df["speed"].iloc[0],
+]
+initial_std = [5.0, 5.0, 1.0, 1.0, np.pi / 4]  # x, y, dx, dy, yaw
+u_std = [0.2, 0.05]
+sensor_std = [5.0, 5.0]
+N = 500
+
+print(f"Initial x: {initial_x}")
+particles = create_gaussian_particles(mean=initial_x, std=initial_std, N=N)
+weights = np.ones(N) / N
+xs = []
+plotParticles(particles, weights, xs)
 
 
 dt = 0.1
