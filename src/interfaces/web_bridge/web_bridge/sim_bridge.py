@@ -28,6 +28,7 @@ from geometry_msgs.msg import (
     TransformStamped,
     Quaternion,
 )
+from gps_msgs.msg import GPSFix
 from sensor_msgs.msg import Image, CompressedImage, PointCloud2, PointField, NavSatFix
 from std_msgs.msg import Header, Float32
 from tf2_ros import TransformBroadcaster
@@ -176,7 +177,7 @@ class WebsocketBridge(Node):
             PoseWithCovarianceStamped, "/gnss/pose", 1
         )
 
-        self.gnss_fix_pub = self.create_publisher(NavSatFix, "/gnss/fix", 1)
+        self.gnss_fix_pub = self.create_publisher(GPSFix, "/gnss/gpsfix", 1)
         self.gnss_yaw_pub = self.create_publisher(Float32, "/gnss/yaw", 1)
 
         self.cmd_vel_sub = self.create_subscription(
@@ -230,25 +231,25 @@ class WebsocketBridge(Node):
         print(f"{self.turn} -> {turn_byte}")
 
         if throttle_byte > 255:
-            throttle_byte = 255
             self.get_logger().warning(
-                f"Throttle byte {throttle_byte} was too big. Capping to 256."
+                f"Throttle byte {throttle_byte} was too big. Capping to 255."
             )
+            throttle_byte = 255
         elif throttle_byte < 0:
-            throttle_byte = 0
             self.get_logger().warning(
                 f"Throttle byte {throttle_byte} was too small. Capping to 0."
             )
+            throttle_byte = 0
         if turn_byte > 255:
-            turn_byte = 255
             self.get_logger().warning(
-                f"Turn byte {turn_byte} was too big. Capping to 256."
+                f"Turn byte {turn_byte} was too big. Capping to 255."
             )
+            turn_byte = 255
         elif turn_byte < 0:
-            turn_byte = 0
             self.get_logger().warning(
                 f"Turn byte {turn_byte} was too small. Capping to 0."
             )
+            turn_byte = 0
         message = bytearray([MessageType.TELEOP, throttle_byte, turn_byte])
         # print(f"{self.tur}, {turn_byte}")
 
@@ -373,7 +374,7 @@ class WebsocketBridge(Node):
 
         # self.get_logger().info(f"{lat}, {lon}, {alt}, {yaw}")
 
-        fix_msg = NavSatFix()
+        fix_msg = GPSFix()
         fix_msg.header.frame_id = "earth"
         fix_msg.header.stamp = self.get_clock().now().to_msg()
 

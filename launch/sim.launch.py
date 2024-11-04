@@ -80,22 +80,22 @@ def generate_launch_description():
         [
             # INTERFACES
             # gnss,
-            # rosbridge_server,
+            rosbridge_server,
             # warthog_bridge,
-            # sim_bridge,
+            sim_bridge,
             # PERCEPTION
             # PLANNING
             # forest_planner,
             # route_planner,
             # heightmap_publisher,
-            # occ_grid,
-            # cost_maps,
-            # behavior_fsm,
+            occ_grid,
+            cost_maps,
+            behavior_fsm,
             # trajectory_planner,
             # CONTROL
             # mvp_controller,
             # SAFETY
-            # health_monitor,
+            health_monitor,
             # MISC.
             joint_state_publisher,
             # pose_to_transform_broadcaster,
