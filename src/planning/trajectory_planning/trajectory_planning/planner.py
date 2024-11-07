@@ -237,8 +237,34 @@ class PlannerNode(Node):
 
         candidates.append([v, candidates_at_speed])
 
-        v = top_speed * 0.75
+        # Now med speed
+        v = top_speed * 0.667
         Omega = np.linspace(-0.2, 0.2, 5)
+        candidates_at_speed = []
+        for omega in Omega:
+            pose = np.zeros(4)  # Start at ego position, zero speed, zero (relative) yaw
+            trajectory = []
+
+            for t in np.arange(0, time_horizon, dt):
+                trajectory.append(pose.copy())
+                pose[0] += v * math.cos(pose[2]) * dt
+                pose[1] += v * math.sin(pose[2]) * dt
+                pose[2] += omega * dt
+                pose[3] = t + dt
+
+            trajectory = np.asarray(trajectory)
+            trajectories.append(trajectory)
+            candidate = Candidate(v, omega, trajectory)
+            mask = self.getCandidateMask(candidate)
+            candidates_at_speed.append([omega, mask])
+            # plt.imshow(mask, extent=[-8, 12, -10, 10])
+            # plt.show()
+
+        candidates.append([v, candidates_at_speed])
+
+        # Now low speed
+        v = top_speed * 0.333
+        Omega = np.linspace(-0.3, 0.3, 7)
         candidates_at_speed = []
         for omega in Omega:
             pose = np.zeros(4)  # Start at ego position, zero speed, zero (relative) yaw
