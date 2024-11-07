@@ -5,11 +5,13 @@ from rclpy.node import Node, ParameterDescriptor, ParameterType
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 
 # Messages
+from geometry_msgs.msg import TransformStamped
+from gps_msgs.msg import GPSFix
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import NavSatFix, Imu
 from std_msgs.msg import Header, Float32
 
-from tf2_ros import TransformException
+from tf2_ros import TransformException, TransformBroadcaster
 from tf2_ros.buffer import Buffer
 from tf2_ros.transform_listener import TransformListener
 from scipy.spatial.transform import Rotation as R
@@ -35,38 +37,84 @@ class InterfaceNode(Node):
         # self.ser = serial.Serial("/dev/ttyUSB0", 115200, timeout=1)
 
         self.odom_pub = self.create_publisher(Odometry, "/gnss/odom", 10)
-        self.fix_pub = self.create_publisher(NavSatFix, "/gnss/fix", 10)
+        # self.fix_pub = self.create_publisher(NavSatFix, "/gnss/fix", 10)
         self.yaw_pub = self.create_publisher(Float32, "/gnss/yaw", 10)
-        self.imu_pub = self.create_publisher(Imu, "/gnss/imu", 10)
+        # self.imu_pub = self.create_publisher(Imu, "/gnss/imu", 10)
 
-        self.create_timer(0.01, self.checkGnssMessages)
+        self.create_subscription(GPSFix, "/gnss/gpsfix", self.swiftFixCb, 1)
+
+        self.tf_broadcaster = TransformBroadcaster(self)
+
+        # self.create_timer(0.01, self.checkGnssMessages)
 
         self.yaw_enu = None
         self.track_deg = None
         self.speed = None
 
-        # Open a connection to Piksi using the default baud rate (1Mbaud)
-        with PySerialDriver("/dev/ttyUSB0", baud=115200) as driver:
-            with Handler(Framer(driver.read, None, verbose=True)) as source:
-                try:
-                    for msg, metadata in source:
-                        print(type(msg))
+        lat0, lon0, alt0 = self.get_parameter("map_origin_lat_lon_alt_degrees").value
+        self.origin_utm_x, self.origin_utm_y, _, __ = utm.from_latlon(lat0, lon0)
 
-                        if isinstance(msg, MsgObs):
-                            # print(msg)
-                            pass
-                        elif isinstance(msg, MsgImuRaw):
-                            # print(msg)
-                            self.publishImu(msg)
-                            pass
-                        elif isinstance(msg, MsgPosLLHCov):
-                            print(msg)
-                            self.publishFix(msg)
-                            self.publishOdometry(msg)
-                        # Print out the N, E, D coordinates of the baseline
-                        # print("%.4f,%.4f,%.4f" % (msg.n * 1e-3, msg.e * 1e-3, msg.d * 1e-3))
-                except KeyboardInterrupt:
-                    pass
+        # Open a connection to Piksi using the default baud rate (1Mbaud)
+        # with PySerialDriver("/dev/ttyUSB0", baud=115200) as driver:
+        #     with Handler(Framer(driver.read, None, verbose=True)) as source:
+        #         try:
+        #             for msg, metadata in source:
+        #                 print(type(msg))
+
+        #                 if isinstance(msg, MsgObs):
+        #                     # print(msg)
+        #                     pass
+        #                 elif isinstance(msg, MsgImuRaw):
+        #                     # print(msg)
+        #                     self.publishImu(msg)
+        #                     pass
+        #                 elif isinstance(msg, MsgPosLLHCov):
+        #                     print(msg)
+        #                     self.publishFix(msg)
+        #                     self.publishOdometry(msg)
+        #                 # Print out the N, E, D coordinates of the baseline
+        #                 # print("%.4f,%.4f,%.4f" % (msg.n * 1e-3, msg.e * 1e-3, msg.d * 1e-3))
+        #         except KeyboardInterrupt:
+        #             pass
+
+    def swiftFixCb(self, swift_msg: GPSFix):
+        # publish as Odometry message
+
+        odom_msg = Odometry()
+        odom_msg.header.stamp = self.get_clock().now().to_msg()
+        odom_msg.header.frame_id = "map"
+        odom_msg.child_frame_id = "base_link"
+
+        ego_utm_x, ego_utm_y, _, __ = utm.from_latlon(
+            swift_msg.latitude, swift_msg.longitude
+        )
+
+        ego_x = ego_utm_x - self.origin_utm_x
+        ego_y = ego_utm_y - self.origin_utm_y
+
+        odom_msg.pose.pose.position.x = ego_x
+        odom_msg.pose.pose.position.y = ego_y
+        odom_msg.pose.pose.position.z = swift_msg.altitude
+
+        yaw = self.trueTrackToEnuRads(swift_msg.track)
+        q = R.from_euler("xyz", [0.0, 0.0, yaw]).as_quat()
+
+        odom_msg.pose.pose.orientation.x = q[0]
+        odom_msg.pose.pose.orientation.y = q[1]
+        odom_msg.pose.pose.orientation.z = q[2]
+        odom_msg.pose.pose.orientation.w = q[3]
+
+        t = TransformStamped()
+        t.transform.translation.x = ego_x
+        t.transform.translation.y = ego_y
+        t.transform.translation.z = swift_msg.altitude
+        t.transform.rotation = odom_msg.pose.pose.orientation
+        t.header = odom_msg.header
+        t.child_frame_id = odom_msg.child_frame_id
+        self.tf_broadcaster.sendTransform(t)
+
+        self.odom_pub.publish(odom_msg)
+        self.yaw_pub.publish(Float32(data=yaw))
 
     def publishFix(self, msg: MsgPosLLHCov):
         fix_msg = NavSatFix()

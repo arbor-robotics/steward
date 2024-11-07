@@ -88,8 +88,8 @@ class EkfHelper(Node):
         odom_msg.header.frame_id = "map"
         odom_msg.child_frame_id = "base_link"
 
-        cov = np.eye(6)
-        cov[:3, :3] = np.asarray(msg.position_covariance).reshape((3, 3))
+        cov = np.zeros((6, 6))
+        cov[:3, :3] = np.asarray(msg.position_covariance).reshape((3, 3)) * 0.1
 
         odom_msg.pose.covariance = cov.flatten().tolist()
 
