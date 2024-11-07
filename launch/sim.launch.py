@@ -98,7 +98,7 @@ def generate_launch_description():
             health_monitor,
             # MISC.
             joint_state_publisher,
-            pose_to_transform_broadcaster,
+            # pose_to_transform_broadcaster,
             urdf_publisher,
         ]
     )

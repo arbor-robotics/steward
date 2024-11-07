@@ -22,7 +22,7 @@ import utm
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
 from geometry_msgs.msg import Pose, Point
 from nav_msgs.msg import OccupancyGrid, MapMetaData
-from std_msgs.msg import Header, String
+from std_msgs.msg import Header, String, Empty
 from steward_msgs.msg import FailedChecks, HealthCheck, SystemwideStatus
 from sensor_msgs.msg import PointCloud2, PointField
 
@@ -35,6 +35,9 @@ class CostMapNode(Node):
 
         self.create_subscription(String, "/planning/plan_json", self.planCb, 1)
         self.create_subscription(OccupancyGrid, "/cost/occupancy", self.occCb, 1)
+        self.create_subscription(
+            Empty, "/behavior/seedling_reached", self.onSeedlingReached, 1
+        )
 
         self.seedling_dist_map_pub = self.create_publisher(
             OccupancyGrid, "/cost/dist_to_seedlings", 1
@@ -50,6 +53,16 @@ class CostMapNode(Node):
         self.seedling_points = None
         self.seedling_pts_bl = None
         self.cached_occ = np.zeros((100, 100))
+
+    def onSeedlingReached(self, msg: Empty):
+        updated_points = []
+
+        for point in self.seedling_points:
+            dist = pdist([self.ego_pos, point])[0]
+            if dist > 2.0:
+                updated_points.append(point)
+
+        self.seedling_points = updated_points
 
     def occCb(self, msg: OccupancyGrid):
         arr = np.asarray(msg.data).reshape(msg.info.height, msg.info.width)
@@ -68,10 +81,13 @@ class CostMapNode(Node):
         return (x, y)
 
     def getDistanceToSeedlingMap(self) -> np.ndarray:
+
+        start = time()
+
         if self.seedling_points is None:
-            # self.get_logger().warning(
-            #     "Seedling locations not available. Skipping distance to seedling cost."
-            # )
+            self.get_logger().warning(
+                "Seedling locations not available. Skipping distance to seedling cost."
+            )
             return np.ones((100, 100)) * 100
 
         try:
@@ -91,6 +107,11 @@ class CostMapNode(Node):
             return np.ones((100, 100)) * 100
 
         nearby_seedlings = []
+        MAX_SEEDLING_DIST = (
+            20.0  # Seedlings must be at least this close (m) to be considered nearby
+        )
+        closest_distance = 99999.9
+        closest_seedling = None
 
         for seedling_pt in self.seedling_points:
             seedling_x, seedling_y = seedling_pt
@@ -99,6 +120,10 @@ class CostMapNode(Node):
 
             if dist < 20:
                 nearby_seedlings.append(seedling_pt)
+
+            if dist < closest_distance:
+                closest_distance = dist
+                closest_seedling = seedling_pt
 
         # self.get_logger().info(f"There are {len(nearby_seedlings)} nearby seedlings.")
 
@@ -110,39 +135,74 @@ class CostMapNode(Node):
         GRID_WIDTH = 100
         GRID_HEIGHT = GRID_WIDTH
 
-        distance_to_seedling_map = np.zeros((GRID_HEIGHT, GRID_WIDTH))
+        DOWNSAMPLE_RATE = 3
 
-        # Transform points to base_link
-        self.seedling_pts_bl = self.transformToBaselink(nearby_seedlings)
-
-        if self.seedling_pts_bl is None:
-            self.get_logger().warning("No nearby points.")
-            distance_to_seedling_map += 100
-        else:
-            points = self.seedling_pts_bl
-
-            points /= RES
-            points = points.astype(np.int8)
-
-            # Discard indices outside of bounds
-
-            # Offset by origin
-            points[:, 0] += ORIGIN_X_PX
-            points[:, 1] += ORIGIN_Y_PX
-
-            points = points[
-                np.logical_and(points[:, 0] > 0, points[:, 0] < GRID_HEIGHT)
-            ]
-            points = points[np.logical_and(points[:, 1] > 1, points[:, 1] < GRID_WIDTH)]
-
-            distance_to_seedling_map[tuple(points.T)] = 1000
-
-        distance_to_seedling_map = cv2.GaussianBlur(
-            distance_to_seedling_map, (99, 99), 0
+        distance_to_seedling_map = np.zeros(
+            (GRID_HEIGHT // DOWNSAMPLE_RATE, GRID_WIDTH // DOWNSAMPLE_RATE)
         )
 
+        closest_seedling_bl = self.transformToBaselink([closest_seedling])
+
+        if closest_seedling_bl is None:
+            return np.ones((100, 100)) * 100
+        else:
+            closest_seedling_bl = closest_seedling_bl[0]
+
+        closest_seedling_px = closest_seedling_bl / (RES * DOWNSAMPLE_RATE)
+        closest_seedling_px[0] += int(ORIGIN_X_PX / DOWNSAMPLE_RATE)
+        closest_seedling_px[1] += int(ORIGIN_Y_PX / DOWNSAMPLE_RATE)
+        closest_seedling_px = closest_seedling_px.astype(int)
+
+        # print(closest_seedling_px)
+
+        for i in range(distance_to_seedling_map.shape[0]):
+            for j in range(distance_to_seedling_map.shape[1]):
+                dist = pdist([[i, j], closest_seedling_px])
+                distance_to_seedling_map[i, j] = dist
+                # print(f"Dist from {[i, j]} to {closest_seedling_px} was {dist}")
+
+        # print(closest_seedling)
+        # print(closest_seedling_bl)
+
+        # plt.imshow(distance_to_seedling_map)
+
+        distance_to_seedling_map = cv2.resize(
+            distance_to_seedling_map, (GRID_HEIGHT, GRID_WIDTH)
+        )
+
+        # Transform points to base_link
+        # self.seedling_pts_bl = self.transformToBaselink(nearby_seedlings)
+
+        # if self.seedling_pts_bl is None:
+        #     self.get_logger().warning("No nearby points.")
+        #     distance_to_seedling_map += 100
+        # else:
+        #     points = self.seedling_pts_bl
+
+        #     points /= RES
+        #     points = points.astype(np.int8)
+
+        #     # Discard indices outside of bounds
+
+        #     # Offset by origin
+        #     points[:, 0] += ORIGIN_X_PX
+        #     points[:, 1] += ORIGIN_Y_PX
+
+        #     points = points[
+        #         np.logical_and(points[:, 0] > 0, points[:, 0] < GRID_HEIGHT)
+        #     ]
+        #     points = points[np.logical_and(points[:, 1] > 1, points[:, 1] < GRID_WIDTH)]
+
+        #     distance_to_seedling_map[tuple(points.T)] = 1000
+
+        # distance_to_seedling_map = cv2.GaussianBlur(
+        #     distance_to_seedling_map, (99, 99), 0
+        # )
+
         # Normalize
-        MAX_DISTANCE_COST = 60
+        MAX_DISTANCE_COST = 100
+
+        distance_to_seedling_map = np.power(distance_to_seedling_map, 1 / 2)
         distance_to_seedling_map /= np.max(distance_to_seedling_map)
         distance_to_seedling_map *= MAX_DISTANCE_COST
         distance_to_seedling_map = (
@@ -155,9 +215,26 @@ class CostMapNode(Node):
         # FLIP AXES
         distance_to_seedling_map = distance_to_seedling_map.T
 
+        # plt.savefig("distances.png")
+        # plt.show()
+
+        # print(f"Took {time() - start} sec")
+
         return distance_to_seedling_map.astype(np.uint8)
 
+    def updateSeedlingPoints(self):
+        # This will remove seedling points if they are close to the robot
+
+        if self.seedling_points is None:
+            return
+
+        new_seedling_points = []
+        for point in self.seedling_points:
+            print(point)
+
     def updateCosts(self, do_plot=False):
+
+        self.updateSeedlingPoints()
 
         RES = 0.2  # meters per pixel
         ORIGIN_X_PX = 40
@@ -169,8 +246,17 @@ class CostMapNode(Node):
 
         distance_to_seedling_map = self.getDistanceToSeedlingMap()
 
+        # Now invert the distance to seedling map so that
+        # it represents "closeness" instead of distance.
+        # In other words, great distances mean higher cost, not lower cost.
+        closeness_to_seedling_map = (
+            np.ones_like(distance_to_seedling_map) * 100 - distance_to_seedling_map
+        )
+
         # Now add the layers together
-        total_cost_map = distance_to_seedling_map + self.cached_occ
+        total_cost_map = closeness_to_seedling_map + self.cached_occ
+        # total_cost_map = self.cached_occ
+        # total_cost_map = distance_to_seedling_map
         total_cost_map[total_cost_map > 100] = 100
 
         if np.min(total_cost_map) < 0:
@@ -303,6 +389,7 @@ class CostMapNode(Node):
 
                 self.seedling_points.append([seedling_x, seedling_y])
 
+            print(self.seedling_points)
         except KeyError as e:
             self.get_logger().error(f"{e}")
 
