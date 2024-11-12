@@ -1,117 +1,119 @@
+from numpy.random import uniform, randn
 import numpy as np
-import math
+import scipy
 from matplotlib import pyplot as plt
+from filterpy.monte_carlo import systematic_resample
+from numpy.linalg import norm
+from numpy.random import randn
+import scipy.stats
 import rclpy
 from rclpy.node import Node, ParameterDescriptor, ParameterType
-from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
-
-# Messages
-from gps_msgs.msg import GPSFix
-from nav_msgs.msg import Odometry
-from sensor_msgs.msg import NavSatFix, Imu
-from std_msgs.msg import Header, Float32
-
-from tf2_ros import TransformException
+from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy, DurabilityPolicy
 from tf2_ros.buffer import Buffer
+from tf2_ros import TransformException
 from tf2_ros.transform_listener import TransformListener
-from scipy.spatial.transform import Rotation as R
-
 import utm
 
+# ROS message definitions
+from geometry_msgs.msg import PoseWithCovarianceStamped, TransformStamped, Twist
+from gps_msgs.msg import GPSFix
+from nav_msgs.msg import Odometry
+from sensor_msgs.msg import Imu, NavSatFix
 
-def trueTrackToEnuRads(track_deg: float):
-    enu_yaw = track_deg
-
-    enu_yaw -= 90
-
-    enu_yaw = 360 - enu_yaw
-
-    if enu_yaw < 0:
-        enu_yaw += 360
-    elif enu_yaw > 360:
-        enu_yaw -= 360
-
-    enu_yaw *= math.pi / 180.0
-    return enu_yaw
-
-
-fig, (ax1) = plt.subplots(1, 1)
+"""
+ADAPTED FROM ROGER LABBE: https://github.com/rlabbe/Kalman-and-Bayesian-Filters-in-Python/blob/master/12-Particle-Filters.ipynb
+"""
 
 
 class EkfHelper(Node):
     def __init__(self):
         super().__init__("ekf_helper")
 
-        self.setUpParameters()
+        sensor_qos_profile = QoSProfile(
+            reliability=ReliabilityPolicy.BEST_EFFORT,
+            durability=DurabilityPolicy.VOLATILE,
+            history=HistoryPolicy.KEEP_LAST,
+            depth=10,
+        )
 
-        self.create_subscription(GPSFix, "/gnss/gpsfix", self.gpsFixCb, 1)
+        self.setUpParameters()
+        self.tf_buffer = Buffer()
+        self.tf_listener = TransformListener(self.tf_buffer, self)
+
+        self.create_subscription(GPSFix, "/gnss/gpsfix", self.gpsfixCb, 1)
         self.create_subscription(Odometry, "/odometry/filtered", self.filteredOdomCb, 1)
 
-        self.odom_pub = self.create_publisher(Odometry, "/ekf_in/odom", 1)
+        self.odom_pub = self.create_publisher(Odometry, "/gnss/odom", 1)
+        self.filtered_fix_pub = self.create_publisher(NavSatFix, "/filtered_fix", 1)
 
-        self.gnss_poses = []
-        self.ekf_poses = []
+        self.zone_number, self.zone_letter = None, None
+
+        # self.create_timer(0.1, self.publishOdom)
 
     def filteredOdomCb(self, msg: Odometry):
-        x = msg.pose.pose.position.x
-        y = msg.pose.pose.position.y
-        yaw = np.arccos(msg.pose.pose.orientation.z) * 2
+        pos = msg.pose.pose.position
+        lat, lon = self.odomToLatLon(pos.x, pos.y)
 
-        self.ekf_poses.append([x, y, yaw])
+        fix_msg = NavSatFix()
+        fix_msg.latitude = lat
+        fix_msg.longitude = lon
 
-    def gpsFixCb(self, msg: GPSFix):
-        odom_msg = Odometry()
+        self.filtered_fix_pub.publish(fix_msg)
 
+    def odomToLatLon(self, ego_x: float, ego_y: float):
         lat0, lon0, alt0 = self.get_parameter("map_origin_lat_lon_alt_degrees").value
-        origin_x, origin_y, _, __ = utm.from_latlon(lat0, lon0)
+        origin_x, origin_y, zone_number, zone_letter = utm.from_latlon(lat0, lon0)
+        return utm.to_latlon(
+            ego_x + origin_x, ego_y + origin_y, zone_number, zone_letter
+        )
+
+    def gpsfixCb(self, msg: GPSFix):
+        # Form an odom message
+
+        lat, lon, alt = self.get_parameter("map_origin_lat_lon_alt_degrees").value
+        origin_x, origin_y, self.zone_number, self.zone_letter = utm.from_latlon(
+            lat, lon
+        )
 
         ego_x, ego_y, _, __ = utm.from_latlon(msg.latitude, msg.longitude)
 
-        x = ego_x - origin_x
-        y = ego_y - origin_y
-        yaw = trueTrackToEnuRads(msg.track)
+        ego_x = ego_x - origin_x
+        ego_y = ego_y - origin_y
+
+        odom_msg = Odometry()
+        odom_msg.pose.pose.position.x = ego_x
+        odom_msg.pose.pose.position.y = ego_y
+        odom_msg.header.stamp = self.get_clock().now().to_msg()
 
         odom_msg.header.frame_id = "map"
-        odom_msg.header.stamp = msg.header.stamp
-        odom_msg.child_frame_id = msg.header.frame_id
+        odom_msg.child_frame_id = "base_link"
 
-        # Position
-        odom_msg.pose.pose.position.x = x
-        odom_msg.pose.pose.position.y = y
-        odom_msg.pose.pose.position.z = msg.altitude - alt0
+        cov = np.zeros((6, 6))
+        cov[:3, :3] = np.asarray(msg.position_covariance).reshape((3, 3)) * 0.1
 
-        # Orientation
-        q = R.from_euler("xyz", [0.0, 0.0, yaw]).as_quat()  # Scalar last
-        odom_msg.pose.pose.orientation.x = q[0]
-        odom_msg.pose.pose.orientation.y = q[1]
-        odom_msg.pose.pose.orientation.z = q[2]
-        odom_msg.pose.pose.orientation.w = q[3]
-
-        # Pose covariance
-        pose_cov = np.zeros((6, 6))
-        pose_cov[:3, :3] = np.asarray(msg.position_covariance).reshape((3, 3))
-        pose_cov[5, 5] = msg.err_track * np.pi / 180.0
-        print(f"Yaw cov is {msg.err_track * np.pi / 180.0}")
-        odom_msg.pose.covariance = pose_cov.flatten().tolist()
+        odom_msg.pose.covariance = cov.flatten().tolist()
 
         self.odom_pub.publish(odom_msg)
 
-        self.gnss_poses.append([x, y, yaw])
-        self.plot()
+    # def publishOdom(self):
+    #     try:
+    #         bl_to_map_tf = self.tf_buffer.lookup_transform(
+    #             "map", "base_link", rclpy.time.Time()
+    #         )
+    #         ego_x = bl_to_map_tf.transform.translation.x
+    #         ego_y = bl_to_map_tf.transform.translation.y
+    #         self.ego_pos = (ego_x, ego_y)
 
-    def plot(self):
-        gnss_poses = np.asarray(self.gnss_poses)
-        ax1.scatter(gnss_poses[:, 0], gnss_poses[:, 1], c="red")
-        mean_x, mean_y = np.mean(gnss_poses[:, :2], axis=0)
+    #         q = bl_to_map_tf.transform.rotation
 
-        ax1.set_xlim(mean_x - 50, mean_x + 50)
-        ax1.set_ylim(mean_y - 50, mean_y + 50)
-
-        if len(self.ekf_poses) > 0:
-            ekf_poses = np.asarray(self.ekf_poses)
-            ax1.scatter(ekf_poses[:, 0], ekf_poses[:, 1], c="blue")
-
-            plt.savefig("ekf.png")
+    #         msg = Odometry()
+    #         msg.child_frame_id = "base_link"
+    #         msg.header.frame_id = "map"
+    #         msg.header.stamp = self.get_clock().now().to_msg()
+    #         msg.pose.pose =
+    #     except TransformException as ex:
+    #         self.get_logger().warning(f"Could not get ego position: {ex}")
+    #         return np.ones((100, 100)) * 100
 
     def setUpParameters(self):
         param_desc = ParameterDescriptor()
@@ -125,16 +127,14 @@ class EkfHelper(Node):
 def main(args=None):
     rclpy.init(args=args)
 
-    node = EkfHelper()
+    broadcaster = EkfHelper()
 
-    rclpy.spin(node)
+    rclpy.spin(broadcaster)
 
     # Destroy the node explicitly
     # (optional - otherwise it will be done automatically
     # when the garbage collector destroys the node object)
-    plt.close(fig)
-    node.destroy_node()
-
+    broadcaster.destroy_node()
     rclpy.shutdown()
 
 

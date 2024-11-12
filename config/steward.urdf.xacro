@@ -106,6 +106,7 @@
             </geometry>
         </collision>
     </link>
+
     <joint name="base_link_joint" type="fixed">
         <origin xyz="0 0 0.025" rpy="0 0 0" />
         <parent link="base_link" />
@@ -113,12 +114,12 @@
     </joint>
 
     <link name="swiftnav-gnss"></link>
-
-    <joint name="gnss_joint" type="fixed">
-        <origin xyz="-0.25 -0.3 0.3" rpy="0 0 0" />
-        <parent link="base_link" />
+    <joint name="gnss_link_joint" type="fixed">
+        <origin xyz="-0.2 -0.3 0.5" rpy="0 0 0" />
+        <parent link="base_link"/>
         <child link="swiftnav-gnss" />
     </joint>
+
 
     <xacro:macro name="diff_unit" params="prefix side left">
         <link name="${prefix}_diff_unit_link">
