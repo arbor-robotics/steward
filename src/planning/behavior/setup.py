@@ -18,6 +18,9 @@ setup(
     license="TODO: License declaration",  # See package.xml
     tests_require=["pytest"],
     entry_points={
-        f"console_scripts": [f"fsm = {package_name}.fsm:main"],
+        f"console_scripts": [
+            f"fsm = {package_name}.fsm:main",
+            f"plan_manager = {package_name}.plan_manager:main",
+        ],
     },
 )

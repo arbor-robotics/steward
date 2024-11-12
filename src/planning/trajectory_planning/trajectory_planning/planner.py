@@ -34,6 +34,7 @@ from steward_msgs.msg import (
     SystemwideStatus,
     TrajectoryCandidates,
     TrajectoryCandidate,
+    Mode,
 )
 from sensor_msgs.msg import PointCloud2, PointField
 from std_msgs.msg import Header, String, Float32
@@ -58,18 +59,20 @@ class PlannerNode(Node):
         self.generateCandidates()
 
         self.create_subscription(String, "planning/plan_json", self.planCb, 1)
-        self.create_subscription(Twist, "/cmd_vel", self.cmdVelCb, 1)
+        self.create_subscription(Twist, "/cmd_vel/teleop", self.teleopTwistCb, 1)
         self.create_subscription(OccupancyGrid, "/cost/total", self.totalCostCb, 1)
         self.create_subscription(
             GeoPoint, "/planning/goal_pose_geo", self.goalPointGeoCb, 1
         )
         self.create_subscription(Float32, "/gnss/yaw", self.egoYawCb, 1)
+        self.create_subscription(Mode, "/planning/current_mode", self.currentModeCb, 1)
 
         self.twist_pub = self.create_publisher(Twist, "/cmd_vel", 1)
         self.twist_path_pub = self.create_publisher(Path, "/cmd_vel/path", 1)
         self.candidates_pub = self.create_publisher(
             TrajectoryCandidates, "/planning/candidates", 1
         )
+        self.status_pub = self.create_publisher(DiagnosticStatus, "/diagnostics", 1)
 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
@@ -82,8 +85,16 @@ class PlannerNode(Node):
         self.seedling_points = []
         self.total_cost_map = None
         self.grid_info = None
+        self.cached_teleop = Twist()
+        self.current_mode = Mode.STOPPED
 
         self.create_timer(0.1, self.updateTrajectory)
+
+    def teleopTwistCb(self, msg: Twist):
+        self.cached_teleop = msg
+
+    def currentModeCb(self, msg: Mode):
+        self.current_mode = msg.level
 
     def egoYawCb(self, msg: Float32):
         # self.get_logger().info("Updated ego yaw")
@@ -104,105 +115,6 @@ class PlannerNode(Node):
 
         self.total_cost_map = arr
         self.grid_info = msg.info
-
-    def cmdVelCb(self, msg: Twist):
-
-        # if self.ego_pos is None:
-        #     self.get_logger().warning(f"Ego position unavailable.")
-        #     return
-
-        # if self.ego_yaw is None:
-        #     self.get_logger().warning(f"Ego yaw unavailable.")
-        #     return
-
-        # Visualize the twist trajectory up to some time horizon
-        TIME_HORIZON = 0.5  # sec
-        dt = 0.05  # sec
-
-        # v = msg.linear.x
-        # omega = msg.angular.z
-
-        # FAKE DATA
-
-        V = np.linspace(0.2, 1.0, 5)
-        Omega = np.linspace(-0.2, 0.2, 5)
-
-        candidates = []
-
-        for v in V:
-            for omega in Omega:
-                pose = np.zeros(4)
-                poses = []
-
-                for t in np.arange(0, TIME_HORIZON, dt):
-                    poses.append(pose.copy())
-                    pose[0] += v * math.cos(pose[2])
-                    pose[1] += v * math.sin(pose[2])
-                    pose[2] += omega
-                    pose[3] = t + dt
-
-                poses = np.asarray(poses)
-                candidates.append(poses)
-
-        # TODO WSH: Add a "stop" candidate with v & omega = 0.
-
-        v_user = msg.linear.x
-        omega_user = msg.angular.z
-
-        pose = np.zeros(4)
-        poses = []
-
-        for t in np.arange(0, TIME_HORIZON, dt):
-            poses.append(pose.copy())
-            pose[0] += v_user * math.cos(pose[2])
-            pose[1] += v_user * math.sin(pose[2])
-            pose[2] += omega_user
-            pose[3] = t + dt
-
-        poses = np.asarray(poses)
-
-        # Form a Path message
-        path_msg = Path()
-        path_msg.header.frame_id = "base_link"
-        path_msg.header.stamp = self.get_clock().now().to_msg()
-
-        # fig, ax = plt.subplots()
-        x = range(100)
-
-        if self.total_cost_map is None:
-            return
-
-        # ax.imshow(self.total_cost_map, extent=[-8, 12, -10, 10], cmap="summer")
-
-        # candidate
-        for pose in poses:
-            pose_msg = PoseStamped()
-            pose_msg.header.frame_id = "base_link"
-            pose_msg.header.stamp = self.dt_to_time_msg(pose[3])
-
-            pose_msg.pose.position.x = pose[0]
-            pose_msg.pose.position.y = pose[1]
-            pose_msg.pose.orientation.z = math.cos(pose[2] / 2)
-            pose_msg.pose.orientation.w = math.sin(pose[2] / 2)
-            path_msg.poses.append(pose_msg)
-
-        # for candidate in candidates:
-        #     ax.plot(candidate[:, 0], candidate[:, 1], color="lightcoral", linewidth=2)
-
-        # ax.plot(poses[:, 0], poses[:, 1], color="red", linewidth=5)
-
-        rect = patches.Rectangle(
-            (-0.5, -0.5), 1, 1, linewidth=3, edgecolor="white", facecolor="none"
-        )
-        # ax.add_patch(rect)
-
-        self.twist_path_pub.publish(path_msg)
-
-        # total_cost = self.get_total_cost(poses)
-        # print(total_cost)
-
-        # ax.plot(x, x, "--", linewidth=5, color="firebrick")
-        # plt.savefig("candidates.png")
 
     def generateCandidates(self, top_speed=1.5):
 
@@ -300,52 +212,6 @@ class PlannerNode(Node):
 
         self.candidates = candidates
 
-    def getCandidates(
-        self,
-        min_speed=0.5,
-        max_speed=1.0,
-        speed_steps=4,
-        min_omega=-0.3,
-        max_omega=0.3,
-        omega_steps=7,
-        time_horizon=10.0,
-        dt=0.5,
-    ) -> list[Candidate]:
-        V = np.linspace(min_speed, max_speed, speed_steps)
-        Omega = np.linspace(min_omega, max_omega, omega_steps)
-
-        trajectories = []
-        candidates: list[Candidate] = []
-
-        for v in V:
-            for omega in Omega:
-                pose = np.zeros(
-                    4
-                )  # Start at ego position, zero speed, zero (relative) yaw
-                trajectory = []
-
-                for t in np.arange(0, time_horizon, dt):
-                    trajectory.append(pose.copy())
-                    pose[0] += v * math.cos(pose[2]) * dt
-                    pose[1] += v * math.sin(pose[2]) * dt
-                    pose[2] += omega * dt
-                    pose[3] = t + dt
-
-                trajectory = np.asarray(trajectory)
-                trajectories.append(trajectory)
-                candidates.append(Candidate(v, omega, trajectory))
-
-        # plt.figure()
-        # plt.gca().set_aspect("equal")
-
-        # for trajectory in trajectories:
-        #     trajectory = np.asarray(trajectory)
-        # plt.plot(trajectory[:, 0], trajectory[:, 1])
-
-        # plt.show()
-
-        return candidates
-
     def getCandidateMask(self, candidate: Candidate, collision_radius: float = 1.0):
 
         collision_radius_px = collision_radius / 0.2
@@ -413,13 +279,6 @@ class PlannerNode(Node):
             total_cost *= 0.5
 
         return total_cost
-
-    def dt_to_time_msg(self, dt: float):
-        msg = self.get_clock().now().to_msg()
-        msg.nanosec += int(1e9 * (dt - math.floor(dt)))
-        msg.sec += math.floor(dt)
-
-        return msg
 
     def latLonToMap(self, lat: float, lon: float):
         lat0, lon0, _ = self.get_parameter("map_origin_lat_lon_alt_degrees").value
@@ -593,7 +452,21 @@ class PlannerNode(Node):
 
         self.twist_pub.publish(cmd_msg)
 
+    def publishStatus(self, desc: str, level=DiagnosticStatus.OK):
+        self.status_pub.publish(
+            DiagnosticStatus(message=desc, level=level, name=self.get_name())
+        )
+
     def updateTrajectory(self):
+
+        if self.current_mode == Mode.TELEOP:
+            self.twist_pub.publish(self.cached_teleop)
+            self.publishStatus("Following teleop commands.")
+            return
+
+        elif self.current_mode == Mode.ASSISTED:
+            self.get_logger().error("Assisted teleop is not yet supported!")
+            return
 
         if self.total_cost_map is None:
             self.get_logger().warning(
@@ -633,6 +506,10 @@ class PlannerNode(Node):
 
         POINT_TURN_YAW_ERROR_THRESHOLD = np.pi / 8
         if abs(yaw_error) > POINT_TURN_YAW_ERROR_THRESHOLD:
+
+            direction_string = "left" if yaw_error > 0 else "right"
+            self.publishStatus(f"Turning {direction_string} toward seedling.")
+
             self.pointTurnFromYawError(yaw_error)
             return
 
@@ -678,11 +555,13 @@ class PlannerNode(Node):
                 cmd_msg.linear.x = best_candidate[0]
                 cmd_msg.angular.z = best_candidate[1]
                 self.twist_pub.publish(cmd_msg)
+                self.publishStatus(f"Driving toward seedling.")
                 return
             else:
                 print(f"No obstacle-free candidates found at speed {speed}")
 
         self.twist_pub.publish(cmd_msg)
+        self.publishStatus(f"Stopped for obstacle.")
 
         return
 
