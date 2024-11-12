@@ -36,7 +36,7 @@ class CostMapNode(Node):
         self.create_subscription(String, "/planning/plan_json", self.planCb, 1)
         self.create_subscription(OccupancyGrid, "/cost/occupancy", self.occCb, 1)
         self.create_subscription(
-            Empty, "/behavior/seedling_reached", self.onSeedlingReached, 1
+            Empty, "/behavior/on_seedling_reached", self.onSeedlingReached, 1
         )
 
         self.seedling_dist_map_pub = self.create_publisher(

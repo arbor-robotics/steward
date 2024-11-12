@@ -43,7 +43,7 @@ class FsmNode(Node):
 
         self.current_mode_pub = self.create_publisher(Mode, "/planning/current_mode", 1)
         self.seedling_reached_pub = self.create_publisher(
-            Empty, "/behavior/seedling_reached", 1
+            Empty, "/behavior/on_seedling_reached", 1
         )
 
         self.tf_buffer = Buffer()
