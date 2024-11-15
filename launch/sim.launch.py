@@ -87,19 +87,15 @@ def generate_launch_description():
             # PERCEPTION
             # PLANNING
             plan_manager,
-            # route_planner,
-            # heightmap_publisher,
             occ_grid,
-            # cost_maps,
-            behavior_fsm,
+            cost_maps,
+            # behavior_fsm,
             # trajectory_planner,
             # CONTROL
-            # mvp_controller,
             # SAFETY
             health_monitor,
             # MISC.
             joint_state_publisher,
-            # pose_to_transform_broadcaster,
             urdf_publisher,
         ]
     )

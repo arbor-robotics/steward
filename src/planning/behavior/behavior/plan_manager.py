@@ -17,7 +17,7 @@ import utm
 
 # ROS2 message definitions
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
-from std_msgs.msg import Header
+from std_msgs.msg import Header, Float32
 from steward_msgs.msg import (
     FailedChecks,
     HealthCheck,
@@ -54,6 +54,10 @@ class PlanManager(Node):
             Empty, "/behavior/on_seedling_reached", 1
         )
 
+        self.create_subscription(
+            Float32, "/planning/distance_to_seedling", self.seedlingDistanceCb, 1
+        )
+
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
 
@@ -62,13 +66,13 @@ class PlanManager(Node):
         self.remaining_seedling_points = []
         self.bounds_geojson = ""
 
-        self.create_timer(0.1, self.checkSeedlingDistance)
+        # self.create_timer(0.1, self.checkSeedlingDistance)
 
     def completePlanCb(self, msg: PlantingPlan):
 
-        if msg.bounds_geojson == self.bounds_geojson:
-            self.get_logger().info(f"Got repeated plan, ignoring.")
-            return
+        # if msg.bounds_geojson == self.bounds_geojson:
+        #     self.get_logger().info(f"Got repeated plan, ignoring.")
+        #     return
 
         self.get_logger().info(f"Got complete plan with {len(msg.seedlings)} seedlings")
 
@@ -101,6 +105,55 @@ class PlanManager(Node):
         plan_msg.seedlings = self.remaining_seedlings
         self.remaining_plan_pub.publish(plan_msg)
 
+    def seedlingDistanceCb(self, msg: Float32):
+        closest_distance = msg.data
+
+        try:
+            bl_to_map_tf = self.tf_buffer.lookup_transform(
+                "map", "base_link", rclpy.time.Time()
+            )
+            ego_x = bl_to_map_tf.transform.translation.x
+            ego_y = bl_to_map_tf.transform.translation.y
+            self.ego_pos = [ego_x, ego_y]
+
+        except TransformException as ex:
+            print(f"Could not get transform: {ex}")
+            return
+
+        # print(f"Closest distance was {closest_distance}")
+
+        seedling_reached_distance = (
+            self.get_parameter("seedling_reached_distance")
+            .get_parameter_value()
+            .double_value
+        )
+
+        if closest_distance > seedling_reached_distance:
+            print(f"Still {closest_distance - seedling_reached_distance} m away")
+            return
+
+        closest_distance = 999999.9
+        closest_seedling_idx = -1
+        for idx, point in enumerate(self.remaining_seedling_points):
+            dist = pdist([point, self.ego_pos])
+
+            if dist < closest_distance:
+                closest_distance = dist
+                closest_seedling_idx = idx
+
+        if len(self.remaining_seedling_points) < 1 or len(self.remaining_seedlings) < 1:
+            self.get_logger().warning("No Remaining seedling points.")
+            return
+
+        del self.remaining_seedling_points[closest_seedling_idx]
+        del self.remaining_seedlings[closest_seedling_idx]
+
+        assert len(self.remaining_seedling_points) == len(self.remaining_seedlings)
+
+        print("SEEDLING REACHED")
+        self.publishRemainingPlan()
+        self.seedling_reached_pub.publish(Empty())
+
     def checkSeedlingDistance(self):
         """Periodically check distance from robot to all remaining seedlings.
         If seedling is close, send signal over ROS topic (for any behavior changes) and update list of remaining seedlings.
@@ -114,6 +167,7 @@ class PlanManager(Node):
             self.ego_pos = [ego_x, ego_y]
 
         except TransformException as ex:
+            print(f"Could not get transform: {ex}")
             return
 
         updated_points = []
@@ -125,8 +179,12 @@ class PlanManager(Node):
             .double_value
         )
 
+        closest_distance = 999999.9
         for idx, point in enumerate(self.remaining_seedling_points):
             dist = pdist([point, self.ego_pos])
+
+            if dist < closest_distance:
+                closest_distance = dist
 
             if dist < seedling_reached_distance:
                 print("SEEDLING REACHED")
@@ -136,6 +194,7 @@ class PlanManager(Node):
                 updated_points.append(point)
                 updated_seedlings.append(self.remaining_seedlings[idx])
 
+        print(f"{closest_distance} away")
         self.remaining_seedling_points = updated_points
         self.remaining_seedlings = updated_seedlings
 

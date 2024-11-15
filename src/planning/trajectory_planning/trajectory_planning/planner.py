@@ -37,7 +37,7 @@ from steward_msgs.msg import (
     Mode,
 )
 from sensor_msgs.msg import PointCloud2, PointField
-from std_msgs.msg import Header, String, Float32
+from std_msgs.msg import Header, String, Float32, Bool
 
 
 class Candidate:
@@ -66,6 +66,7 @@ class PlannerNode(Node):
         )
         self.create_subscription(Float32, "/gnss/yaw", self.egoYawCb, 1)
         self.create_subscription(Mode, "/planning/current_mode", self.currentModeCb, 1)
+        self.create_subscription(Bool, "/behavior/is_planting", self.isPlantingCb, 1)
 
         self.twist_pub = self.create_publisher(Twist, "/cmd_vel", 1)
         self.twist_path_pub = self.create_publisher(Path, "/cmd_vel/path", 1)
@@ -87,8 +88,12 @@ class PlannerNode(Node):
         self.grid_info = None
         self.cached_teleop = Twist()
         self.current_mode = Mode.STOPPED
+        self.is_planting = False
 
         self.create_timer(0.1, self.updateTrajectory)
+
+    def isPlantingCb(self, msg: Bool):
+        self.is_planting = msg.data
 
     def teleopTwistCb(self, msg: Twist):
         self.cached_teleop = msg
@@ -459,9 +464,19 @@ class PlannerNode(Node):
 
     def updateTrajectory(self):
 
+        if self.current_mode == Mode.STOPPED:
+            self.publishStatus("Paused")
+            self.twist_pub.publish(Twist())
+            return
+
+        if self.is_planting:
+            self.publishStatus("Planting a seedling")
+            self.twist_pub.publish(Twist())
+            return
+
         if self.current_mode == Mode.TELEOP:
             self.twist_pub.publish(self.cached_teleop)
-            self.publishStatus("Following teleop commands.")
+            self.publishStatus("Following teleop commands")
             return
 
         elif self.current_mode == Mode.ASSISTED:
@@ -508,7 +523,7 @@ class PlannerNode(Node):
         if abs(yaw_error) > POINT_TURN_YAW_ERROR_THRESHOLD:
 
             direction_string = "left" if yaw_error > 0 else "right"
-            self.publishStatus(f"Turning {direction_string} toward seedling.")
+            self.publishStatus(f"Turning {direction_string} toward seedling")
 
             self.pointTurnFromYawError(yaw_error)
             return
@@ -555,7 +570,7 @@ class PlannerNode(Node):
                 cmd_msg.linear.x = best_candidate[0]
                 cmd_msg.angular.z = best_candidate[1]
                 self.twist_pub.publish(cmd_msg)
-                self.publishStatus(f"Driving toward seedling.")
+                self.publishStatus(f"Driving toward seedling")
                 return
             else:
                 print(f"No obstacle-free candidates found at speed {speed}")
@@ -564,56 +579,6 @@ class PlannerNode(Node):
         self.publishStatus(f"Stopped for obstacle.")
 
         return
-
-        # Get cost of each candidate
-        start = time()
-        for candidate in candidates:
-            cost = self.getTotalCost(candidate)
-            candidate.cost = cost
-
-        print(f"Took {time() - start} sec")
-
-        # Publish candidates
-        candidates_msg = TrajectoryCandidates()
-        for candidate in candidates:
-            candidate_msg = TrajectoryCandidate(
-                cost=float(candidate.cost), speed=candidate.speed, omega=candidate.omega
-            )
-            path_msg = Path()
-            path_msg.header.stamp = self.get_clock().now().to_msg()
-            path_msg.header.frame_id = "base_link"
-
-            for pose in candidate.trajectory:
-                pose_msg = PoseStamped()
-                pose_msg.pose.position.x = pose[0]
-                pose_msg.pose.position.y = pose[1]
-                path_msg.poses.append(pose_msg)
-
-            candidate_msg.trajectory = path_msg
-            candidates_msg.candidates.append(candidate_msg)
-
-        self.candidates_pub.publish(candidates_msg)
-
-        # Choose candidate with lowest cost
-        lowest_cost = 9999999
-        best_candidate = None
-
-        for candidate in candidates:
-            if candidate.cost < lowest_cost:
-                lowest_cost = candidate.cost
-                best_candidate = candidate
-
-        # Extract v, omega from selected candidate
-        v = best_candidate.speed
-        omega = best_candidate.omega
-
-        # Convert v, theta to twist message
-        twist_msg = Twist()
-        twist_msg.angular.z = omega
-        twist_msg.linear.x = v
-
-        # Publish twist
-        self.twist_pub.publish(twist_msg)
 
     def onGoalPointReached(self):
 

@@ -22,7 +22,7 @@ import utm
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
 from geometry_msgs.msg import Pose, Point
 from nav_msgs.msg import OccupancyGrid, MapMetaData
-from std_msgs.msg import Header, String, Empty
+from std_msgs.msg import Header, String, Empty, Float32
 from steward_msgs.msg import PlantingPlan, Seedling
 from sensor_msgs.msg import PointCloud2, PointField
 
@@ -46,7 +46,9 @@ class CostMapNode(Node):
         )
 
         self.total_cost_pub = self.create_publisher(OccupancyGrid, "/cost/total", 1)
-
+        self.distance_to_seedling_pub = self.create_publisher(
+            Float32, "/planning/distance_to_seedling", 1
+        )
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
 
@@ -126,6 +128,8 @@ class CostMapNode(Node):
             if dist < closest_distance:
                 closest_distance = dist
                 closest_seedling = seedling_pt
+
+        self.distance_to_seedling_pub.publish(Float32(data=closest_distance))
 
         # self.get_logger().info(f"There are {len(nearby_seedlings)} nearby seedlings.")
 
