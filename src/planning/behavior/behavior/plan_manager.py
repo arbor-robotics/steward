@@ -76,8 +76,9 @@ class PlanManager(Node):
 
         self.get_logger().info(f"Got complete plan with {len(msg.seedlings)} seedlings")
 
-        self.original_seedlings.clear()
-        self.remaining_seedlings.clear()
+        self.original_seedlings = []
+        self.remaining_seedlings = []
+        self.remaining_seedling_points = []
         self.bounds_geojson = msg.bounds_geojson
 
         lat, lon, alt = self.get_parameter("map_origin_lat_lon_alt_degrees").value
