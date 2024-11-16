@@ -56,8 +56,6 @@ class PlannerNode(Node):
 
         self.setUpParameters()
 
-        self.generateCandidates()
-
         self.create_subscription(String, "planning/plan_json", self.planCb, 1)
         self.create_subscription(Twist, "/cmd_vel/teleop", self.teleopTwistCb, 1)
         self.create_subscription(OccupancyGrid, "/cost/total", self.totalCostCb, 1)
@@ -74,6 +72,8 @@ class PlannerNode(Node):
             TrajectoryCandidates, "/planning/candidates", 1
         )
         self.status_pub = self.create_publisher(DiagnosticStatus, "/diagnostics", 1)
+
+        self.generateCandidates()
 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
@@ -121,10 +121,7 @@ class PlannerNode(Node):
         self.total_cost_map = arr
         self.grid_info = msg.info
 
-    def generateCandidates(self, top_speed=1.5):
-
-        dt = 0.1  # sec
-        time_horizon = 5.0  # sec
+    def generateCandidates(self, top_speed=1.5, time_horizon=5.0, dt=0.5):
 
         # Start with top speed
         trajectories = []
@@ -133,6 +130,7 @@ class PlannerNode(Node):
         v = top_speed
         Omega = np.linspace(-0.1, 0.1, 3)
         candidates_at_speed = []
+        mega_mask = np.zeros((100, 100))
         for omega in Omega:
             pose = np.zeros(4)  # Start at ego position, zero speed, zero (relative) yaw
             trajectory = []
@@ -144,13 +142,25 @@ class PlannerNode(Node):
                 pose[2] += omega * dt
                 pose[3] = t + dt
 
-            trajectory = np.asarray(trajectory)
-            trajectories.append(trajectory)
-            candidate = Candidate(v, omega, trajectory)
-            mask = self.getCandidateMask(candidate)
-            candidates_at_speed.append([omega, mask])
-            # plt.imshow(mask, extent=[-8, 12, -10, 10])
-            # plt.show()
+            for second_omega in Omega:
+                second_trajectory = trajectory.copy()
+                second_pose = pose.copy()
+
+                for t in np.arange(0, time_horizon, dt):
+                    second_trajectory.append(second_pose.copy())
+                    second_pose[0] += v * math.cos(second_pose[2]) * dt
+                    second_pose[1] += v * math.sin(second_pose[2]) * dt
+                    second_pose[2] += second_omega * dt
+                    second_pose[3] = t + dt
+
+                second_trajectory = np.asarray(second_trajectory)
+                trajectories.append(second_trajectory)
+                candidate = Candidate(v, omega, second_trajectory)
+                mask = self.getCandidateMask(candidate)
+                candidates_at_speed.append([omega, mask])
+                mega_mask = np.logical_or(mega_mask, mask)
+        # plt.imshow(mega_mask, extent=[-8, 12, -10, 10])
+        # plt.show()
 
         candidates.append([v, candidates_at_speed])
 
@@ -169,17 +179,35 @@ class PlannerNode(Node):
                 pose[2] += omega * dt
                 pose[3] = t + dt
 
-            trajectory = np.asarray(trajectory)
-            trajectories.append(trajectory)
-            candidate = Candidate(v, omega, trajectory)
-            mask = self.getCandidateMask(candidate)
-            candidates_at_speed.append([omega, mask])
+            for second_omega in Omega:
+                second_trajectory = trajectory.copy()
+                second_pose = pose.copy()
+
+                for t in np.arange(0, time_horizon, dt):
+                    second_trajectory.append(second_pose.copy())
+                    second_pose[0] += v * math.cos(second_pose[2]) * dt
+                    second_pose[1] += v * math.sin(second_pose[2]) * dt
+                    second_pose[2] += second_omega * dt
+                    second_pose[3] = t + dt
+
+                second_trajectory = np.asarray(second_trajectory)
+                trajectories.append(second_trajectory)
+                candidate = Candidate(v, omega, second_trajectory)
+                mask = self.getCandidateMask(candidate)
+                candidates_at_speed.append([omega, mask])
+                mega_mask = np.logical_or(mega_mask, mask)
+
             # plt.imshow(mask, extent=[-8, 12, -10, 10])
             # plt.show()
+
+        # plt.imshow(mega_mask, extent=[-8, 12, -10, 10])
+        # plt.show()
 
         candidates.append([v, candidates_at_speed])
 
         # Now low speed
+        mega_mask = np.zeros((100, 100))
+
         v = top_speed * 0.333
         Omega = np.linspace(-0.3, 0.3, 7)
         candidates_at_speed = []
@@ -194,20 +222,66 @@ class PlannerNode(Node):
                 pose[2] += omega * dt
                 pose[3] = t + dt
 
-            trajectory = np.asarray(trajectory)
-            trajectories.append(trajectory)
-            candidate = Candidate(v, omega, trajectory)
-            mask = self.getCandidateMask(candidate)
-            candidates_at_speed.append([omega, mask])
-            # plt.imshow(mask, extent=[-8, 12, -10, 10])
-            # plt.show()
+            for second_omega in Omega:
+                second_trajectory = trajectory.copy()
+                second_pose = pose.copy()
+
+                for t in np.arange(0, time_horizon, dt):
+                    second_trajectory.append(second_pose.copy())
+                    second_pose[0] += v * math.cos(second_pose[2]) * dt
+                    second_pose[1] += v * math.sin(second_pose[2]) * dt
+                    second_pose[2] += second_omega * dt
+                    second_pose[3] = t + dt
+
+                second_trajectory = np.asarray(second_trajectory)
+                trajectories.append(second_trajectory)
+                candidate = Candidate(v, omega, second_trajectory)
+                mask = self.getCandidateMask(candidate)
+                candidates_at_speed.append([omega, mask])
+                mega_mask = np.logical_or(mega_mask, mask)
+
+        # plt.imshow(mega_mask, extent=[-8, 12, -10, 10])
+        # plt.show()
 
         candidates.append([v, candidates_at_speed])
 
         plt.figure()
         plt.gca().set_aspect("equal")
 
-        print(candidates)
+        candidates_msg = TrajectoryCandidates()
+
+        index = 0
+
+        for v, candidates_at_speed in candidates:
+
+            for omega, mask in candidates_at_speed:
+                candidate_msg = TrajectoryCandidate()
+                candidate_msg.omega = omega
+                candidate_msg.speed = v
+                trajectory = trajectories[index]
+
+                path_msg = Path()
+
+                stamp = self.get_clock().now().to_msg()
+                for x, y, omega, t in trajectory:
+                    pose_msg = PoseStamped()
+                    pose_msg.pose.position.x = x
+                    pose_msg.pose.position.y = y
+                    pose_msg.header.frame_id = "base_link"
+                    pose_msg.header.stamp = stamp
+
+                    path_msg.poses.append(pose_msg)
+
+                candidate_msg.trajectory = path_msg
+                candidates_msg.candidates.append(candidate_msg)
+
+                print(v, omega, trajectory)
+
+                index += 1
+
+        self.candidates_msg = candidates_msg
+
+        self.candidates_pub.publish(candidates_msg)
 
         for trajectory in trajectories:
             trajectory = np.asarray(trajectory)
@@ -464,6 +538,11 @@ class PlannerNode(Node):
 
     def updateTrajectory(self):
 
+        if self.candidates_msg is not None:
+            self.candidates_pub.publish(self.candidates_msg)
+        else:
+            self.get_logger().warning("No candidates message available.")
+
         if self.current_mode == Mode.STOPPED:
             self.publishStatus("Paused")
             self.twist_pub.publish(Twist())
@@ -547,6 +626,10 @@ class PlannerNode(Node):
 
                 max_cost = np.max(self.total_cost_map[mask])
                 # print(max_cost)
+                # if speed > 0.49 and omega > 0.29:
+                #     plt.imshow(mask)
+                #     plt.title(f"{max_cost}")
+                #     plt.show()
 
                 if max_cost >= 100:
                     print(f"Obst [{speed}, {omega}] had obstacles")

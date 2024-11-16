@@ -89,7 +89,7 @@ def generate_launch_description():
             plan_manager,
             occ_grid,
             cost_maps,
-            # behavior_fsm,
+            behavior_fsm,
             # trajectory_planner,
             # CONTROL
             # SAFETY

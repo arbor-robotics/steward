@@ -45,6 +45,7 @@ class FsmNode(Node):
         self.planting_locked_pub = self.create_publisher(
             Bool, "/behavior/is_planting", 1
         )
+        self.status_pub = self.create_publisher(DiagnosticStatus, "/diagnostics", 1)
 
         self.create_subscription(
             Empty, "/behavior/on_seedling_reached", self.onSeedlingReachedCb, 1
@@ -68,8 +69,15 @@ class FsmNode(Node):
         self.is_planting = True
         self.planting_start_time = time()
 
+    def publishStatus(self, desc: str, level=DiagnosticStatus.OK):
+        self.status_pub.publish(
+            DiagnosticStatus(message=desc, level=level, name=self.get_name())
+        )
+
     def publishCurrentMode(self):
         self.current_mode_pub.publish(Mode(level=self.current_mode))
+
+        self.publishStatus(f"Setting current mode to {self.current_mode}")
 
         if time() - self.planting_start_time > self.PLANTING_DURATION:
             self.is_planting = False

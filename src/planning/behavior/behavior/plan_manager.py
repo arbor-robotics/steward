@@ -154,50 +154,6 @@ class PlanManager(Node):
         self.publishRemainingPlan()
         self.seedling_reached_pub.publish(Empty())
 
-    def checkSeedlingDistance(self):
-        """Periodically check distance from robot to all remaining seedlings.
-        If seedling is close, send signal over ROS topic (for any behavior changes) and update list of remaining seedlings.
-        """
-        try:
-            bl_to_map_tf = self.tf_buffer.lookup_transform(
-                "map", "base_link", rclpy.time.Time()
-            )
-            ego_x = bl_to_map_tf.transform.translation.x
-            ego_y = bl_to_map_tf.transform.translation.y
-            self.ego_pos = [ego_x, ego_y]
-
-        except TransformException as ex:
-            print(f"Could not get transform: {ex}")
-            return
-
-        updated_points = []
-        updated_seedlings = []
-
-        seedling_reached_distance = (
-            self.get_parameter("seedling_reached_distance")
-            .get_parameter_value()
-            .double_value
-        )
-
-        closest_distance = 999999.9
-        for idx, point in enumerate(self.remaining_seedling_points):
-            dist = pdist([point, self.ego_pos])
-
-            if dist < closest_distance:
-                closest_distance = dist
-
-            if dist < seedling_reached_distance:
-                print("SEEDLING REACHED")
-                self.publishRemainingPlan()
-                self.seedling_reached_pub.publish(Empty())
-            else:
-                updated_points.append(point)
-                updated_seedlings.append(self.remaining_seedlings[idx])
-
-        print(f"{closest_distance} away")
-        self.remaining_seedling_points = updated_points
-        self.remaining_seedlings = updated_seedlings
-
     def setUpParameters(self):
         param_desc = ParameterDescriptor()
         param_desc.type = ParameterType.PARAMETER_DOUBLE_ARRAY

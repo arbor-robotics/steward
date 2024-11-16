@@ -79,8 +79,15 @@ class HealthMonitor(Node):
                 "TRAJECTORY_PLANNING_FAILURE",
                 inspects=["trajectory_planner"],
                 period_sec=0.2,
-                triggers=SystemwideStatus.TELEOP_ONLY,
-                message="Steward's motion planner is unavailable.",
+                triggers=SystemwideStatus.OUT_OF_SERVICE,
+                message="Motion planner unavailable",
+            ),
+            Check(
+                "BEHAVIOR_FAILURE",
+                inspects=["behavior_fsm"],
+                period_sec=0.2,
+                triggers=SystemwideStatus.OUT_OF_SERVICE,
+                message="Behavior planner unavailable",
             ),
         ]
 
@@ -157,7 +164,6 @@ class HealthMonitor(Node):
                 try:
                     status: DiagnosticStatus = self.statuses[node_name]
                 except KeyError:
-                    is_stale = True
                     continue  # If not, skip
 
                 # Is it current (not stale)?
