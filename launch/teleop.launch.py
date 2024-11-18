@@ -254,6 +254,9 @@ def generate_launch_description():
         ],
     )
 
+    plan_manager = Node(package="behavior", executable="plan_manager")
+    trajectory_planner = Node(package="trajectory_planning", executable="planner")
+
     return LaunchDescription(
         [
             DeclareLaunchArgument(
@@ -263,15 +266,17 @@ def generate_launch_description():
             ),
             # INTERFACES
             OpaqueFunction(function=zed_launch_setup),  # camera
-            # gnss,
+            gnss,
             swiftnav_interface,
             rosbridge_server,
             warthog_bridge,
             # PERCEPTION
-            # occ_grid,
+            occ_grid,
             # PLANNING
-            cost_maps,
+            plan_manager,
+            # cost_maps,
             behavior_fsm,
+            trajectory_planner,
             # forest_planner,
             # route_planner,
             # heightmap_publisher,
@@ -281,7 +286,6 @@ def generate_launch_description():
             health_monitor,
             # MISC.
             joint_state_publisher,
-            # particle_filter,
             urdf_publisher,
         ]
     )

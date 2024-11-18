@@ -44,17 +44,20 @@ class InterfaceNode(Node):
     def setUpParameters(self):
         param_desc = ParameterDescriptor()
         param_desc.type = ParameterType.PARAMETER_STRING
-        self.declare_parameter("serial_port", "/dev/ttyUSB0")
+        self.declare_parameter("serial_port", "/dev/ttyACM0")
         param_desc = ParameterDescriptor()
         param_desc.type = ParameterType.PARAMETER_INTEGER
-        self.declare_parameter("serial_baud", 115200)
+        self.declare_parameter("serial_baud", 9600)
 
     def doPlantCb(self, msg: Empty):
         port = self.get_parameter("serial_port").value
         baud = self.get_parameter("serial_baud").value
         with serial.Serial(port, baud, timeout=1) as ser:
-            ser.write("PLANT\n")
+            ser.writelines(["Plant".encode("utf_8")])
 
+            print(ser.readlines(40))
+
+        self.get_logger().info("Sent Plant")
         self.planting_start_time = time()
         self.planting_in_progress = True
 
@@ -62,7 +65,9 @@ class InterfaceNode(Node):
         port = self.get_parameter("serial_port").value
         baud = self.get_parameter("serial_baud").value
         with serial.Serial(port, baud, timeout=1) as ser:
-            ser.write("PAUSE\n")
+            ser.writelines(["Stop".encode("utf_8")])
+
+        self.get_logger().info("Sent Stop")
 
         self.planting_in_progress = False
 

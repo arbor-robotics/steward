@@ -121,7 +121,7 @@ class PlanManager(Node):
             print(f"Could not get transform: {ex}")
             return
 
-        # print(f"Closest distance was {closest_distance}")
+        self.get_logger().info(f"Closest distance was {closest_distance}")
 
         seedling_reached_distance = (
             self.get_parameter("seedling_reached_distance")
@@ -151,7 +151,7 @@ class PlanManager(Node):
 
         assert len(self.remaining_seedling_points) == len(self.remaining_seedlings)
 
-        print("SEEDLING REACHED")
+        self.get_logger().info("SEEDLING REACHED")
         self.publishRemainingPlan()
         self.seedling_reached_pub.publish(Empty())
 
@@ -166,7 +166,7 @@ class PlanManager(Node):
         param_desc.type = ParameterType.PARAMETER_DOUBLE
         self.declare_parameter(
             "seedling_reached_distance",
-            3.0,
+            0.01,
         )
 
 

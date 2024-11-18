@@ -20,7 +20,7 @@ import utm
 
 # ROS2 message definitions
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
-from geometry_msgs.msg import Pose, Point
+from geometry_msgs.msg import Pose, Point, PointStamped
 from nav_msgs.msg import OccupancyGrid, MapMetaData
 from std_msgs.msg import Header, String, Empty, Float32
 from steward_msgs.msg import PlantingPlan, Seedling
@@ -43,6 +43,10 @@ class CostMapNode(Node):
 
         self.seedling_dist_map_pub = self.create_publisher(
             OccupancyGrid, "/cost/dist_to_seedlings", 1
+        )
+
+        self.closest_seedling_point_pub = self.create_publisher(
+            PointStamped, "/planning/closest_seedling_bl", 1
         )
 
         self.total_cost_pub = self.create_publisher(OccupancyGrid, "/cost/total", 1)
@@ -153,6 +157,17 @@ class CostMapNode(Node):
             return np.ones((100, 100)) * 100
         else:
             closest_seedling_bl = closest_seedling_bl[0]
+
+        self.get_logger().info(f"Closest seedling: {closest_seedling_bl}")
+
+        closest_point_msg = PointStamped()
+        closest_point_msg.header.stamp = self.get_clock().now().to_msg()
+        closest_point_msg.header.frame_id = "base_link"
+
+        # if closest_seedling_bl
+        closest_point_msg.point.x = closest_seedling_bl[0]
+        closest_point_msg.point.y = closest_seedling_bl[1]
+        self.closest_seedling_point_pub.publish(closest_point_msg)
 
         closest_seedling_px = closest_seedling_bl / (RES * DOWNSAMPLE_RATE)
         closest_seedling_px[0] += int(ORIGIN_X_PX / DOWNSAMPLE_RATE)

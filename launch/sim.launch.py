@@ -85,9 +85,9 @@ def generate_launch_description():
             # warthog_bridge,
             sim_bridge,
             # PERCEPTION
+            occ_grid,
             # PLANNING
             plan_manager,
-            occ_grid,
             cost_maps,
             behavior_fsm,
             # trajectory_planner,
