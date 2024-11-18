@@ -37,9 +37,9 @@ class CostMapNode(Node):
             PlantingPlan, "/planning/remaining_plan", self.planCb, 1
         )
         self.create_subscription(OccupancyGrid, "/cost/occupancy", self.occCb, 1)
-        # self.create_subscription(
-        #     Empty, "/behavior/on_seedling_reached", self.onSeedlingReached, 1
-        # )
+        self.create_subscription(
+            Empty, "/behavior/on_seedling_reached", self.onSeedlingReached, 1
+        )
 
         self.seedling_dist_map_pub = self.create_publisher(
             OccupancyGrid, "/cost/dist_to_seedlings", 1
@@ -61,16 +61,11 @@ class CostMapNode(Node):
         self.seedling_points = []
         self.seedling_pts_bl = []
         self.cached_occ = np.zeros((100, 100))
+        self.move_to_helper_point = True
 
-    # def onSeedlingReached(self, msg: Empty):
-    #     updated_points = []
-
-    #     for point in self.seedling_points:
-    #         dist = pdist([self.ego_pos, point])[0]
-    #         if dist > 2.0:
-    #             updated_points.append(point)
-
-    #     self.seedling_points = updated_points
+    def onSeedlingReached(self, msg: Empty):
+        print("Seedling reached")
+        self.move_to_helper_point = True
 
     def occCb(self, msg: OccupancyGrid):
         arr = np.asarray(msg.data).reshape(msg.info.height, msg.info.width)
@@ -131,7 +126,7 @@ class CostMapNode(Node):
 
             if dist < closest_distance:
                 closest_distance = dist
-                closest_seedling = seedling_pt
+                closest_seedling = seedling_pt.copy()
 
         self.distance_to_seedling_pub.publish(Float32(data=closest_distance))
 
@@ -151,14 +146,29 @@ class CostMapNode(Node):
             (GRID_HEIGHT // DOWNSAMPLE_RATE, GRID_WIDTH // DOWNSAMPLE_RATE)
         )
 
+        if self.move_to_helper_point:
+            closest_seedling[0] += 5.0
+
+            dist = pdist([self.ego_pos, closest_seedling])[0]
+            print(dist)
+
+            if dist < 1.0:
+                self.move_to_helper_point = False
+                self.get_logger().info(
+                    f"Helper point reached, moving to planting spot!"
+                )
+
+        # self.get_logger().info(f"Closest seedling: {closest_seedling}")
+        if self.move_to_helper_point:
+            self.get_logger().info(f"Moving to helped point")
+        else:
+            self.get_logger().info(f"Moving to real point")
         closest_seedling_bl = self.transformToBaselink([closest_seedling])
 
         if closest_seedling_bl is None:
             return np.ones((100, 100)) * 100
         else:
             closest_seedling_bl = closest_seedling_bl[0]
-
-        self.get_logger().info(f"Closest seedling: {closest_seedling_bl}")
 
         closest_point_msg = PointStamped()
         closest_point_msg.header.stamp = self.get_clock().now().to_msg()

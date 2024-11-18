@@ -26,7 +26,7 @@ from skimage.draw import disk
 # ROS2 message definitions
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
 from geographic_msgs.msg import GeoPoint
-from geometry_msgs.msg import Pose, Point, Twist, PoseStamped
+from geometry_msgs.msg import Pose, Point, Twist, PoseStamped, PointStamped
 from nav_msgs.msg import OccupancyGrid, MapMetaData, Path
 from steward_msgs.msg import (
     FailedChecks,
@@ -35,6 +35,8 @@ from steward_msgs.msg import (
     TrajectoryCandidates,
     TrajectoryCandidate,
     Mode,
+    PlantingPlan,
+    Seedling,
 )
 from sensor_msgs.msg import PointCloud2, PointField
 from std_msgs.msg import Header, String, Float32, Bool
@@ -65,6 +67,13 @@ class PlannerNode(Node):
         self.create_subscription(Float32, "/gnss/yaw", self.egoYawCb, 1)
         self.create_subscription(Mode, "/planning/current_mode", self.currentModeCb, 1)
         self.create_subscription(Bool, "/behavior/is_planting", self.isPlantingCb, 1)
+        self.create_subscription(
+            PointStamped, "/planning/closest_seedling_bl", self.closestPointBlCb, 1
+        )
+
+        self.create_subscription(
+            PlantingPlan, "/planning/remaining_plan", self.planCb, 1
+        )
 
         self.twist_pub = self.create_publisher(Twist, "/cmd_vel", 1)
         self.twist_path_pub = self.create_publisher(Path, "/cmd_vel/path", 1)
@@ -89,8 +98,12 @@ class PlannerNode(Node):
         self.cached_teleop = Twist()
         self.current_mode = Mode.STOPPED
         self.is_planting = False
+        self.closest_point_bl = None
 
-        self.create_timer(0.1, self.updateTrajectory)
+        self.create_timer(0.1, self.updateTrajectorySimply)
+
+    def closestPointBlCb(self, msg: PointStamped):
+        self.closest_point_bl = [msg.point.x, msg.point.y]
 
     def isPlantingCb(self, msg: Bool):
         self.is_planting = msg.data
@@ -281,7 +294,7 @@ class PlannerNode(Node):
 
         self.candidates_msg = candidates_msg
 
-        self.candidates_pub.publish(candidates_msg)
+        # self.candidates_pub.publish(candidates_msg)
 
         for trajectory in trajectories:
             trajectory = np.asarray(trajectory)
@@ -457,57 +470,11 @@ class PlannerNode(Node):
         pixel_coords = np.unravel_index(x.argmin(), x.shape)
         return [pixel_coords[1] - 40, pixel_coords[0] - 50]
 
-    def planCb(self, msg: String):
-
-        try:
-            plan_obj = json.loads(msg.data)
-        except json.decoder.JSONDecodeError as e:
-            self.get_logger().error(f"Could not process plan message: {e}")
-            return
-
-        try:
-            bl_to_map_tf = self.tf_buffer.lookup_transform(
-                "map", "base_link", rclpy.time.Time()
-            )
-            ego_x = bl_to_map_tf.transform.translation.x
-            ego_y = bl_to_map_tf.transform.translation.y
-            self.ego_pos = (ego_x, ego_y)
-
-            q = bl_to_map_tf.transform.rotation
-            r = R.from_quat([q.x, q.y, q.z, q.w])
-            self.ego_yaw = r.as_euler("xyz")[2]
-
-        except TransformException as ex:
-            self.get_logger().warning(f"Could not get ego position: {ex}")
-            return
-
-        try:
-            seedlings: list[object] = plan_obj["seedlings"]
-            # self.get_logger().info(f"Got plan: {seedlings}")
-
-            min_dist = 9999.9
-
-            self.seedling_points = []
-
-            for seedling in seedlings:
-                seedling_x, seedling_y = self.latLonToMap(
-                    seedling["lat"], seedling["lon"]
-                )
-
-                self.seedling_points.append([seedling_x, seedling_y])
-
-                dist = pdist([[ego_x, ego_y], [seedling_x, seedling_y]])[0]
-
-                if dist < min_dist:
-                    min_dist = dist
-                    self.goal_point = [seedling_x, seedling_y]
-
-            self.get_logger().info(
-                f"Min dist was: {min_dist}. Goal point is now {self.goal_point}"
-            )
-
-        except KeyError as e:
-            self.get_logger().error(f"{e}")
+    def planCb(self, msg: PlantingPlan):
+        print(f"Got plan with {len(msg.seedlings)} seedlings")
+        for seedling in msg.seedlings:
+            seedling: Seedling
+            print(seedling.species_id)
 
     def getYawError(self, goal_point_bl):
         yaw_error = math.atan2(goal_point_bl[0], goal_point_bl[1]) - np.pi / 2
@@ -528,6 +495,7 @@ class PlannerNode(Node):
             omega *= -1
 
         cmd_msg.angular.z = omega
+        cmd_msg.linear.x = 0.2
 
         self.twist_pub.publish(cmd_msg)
 
@@ -535,6 +503,84 @@ class PlannerNode(Node):
         self.status_pub.publish(
             DiagnosticStatus(message=desc, level=level, name=self.get_name())
         )
+
+    def updateTrajectorySimply(self):
+
+        # if self.candidates_msg is not None:
+        #     self.candidates_pub.publish(self.candidates_msg)
+        # else:
+        #     self.get_logger().warning("No candidates message available.")
+
+        if self.current_mode == Mode.STOPPED:
+            self.publishStatus("Paused")
+            self.twist_pub.publish(Twist())
+            return
+
+        if self.is_planting:
+            self.publishStatus("Planting a seedling")
+            self.twist_pub.publish(Twist())
+            return
+
+        if self.current_mode == Mode.TELEOP:
+            self.twist_pub.publish(self.cached_teleop)
+            self.publishStatus("Following teleop commands")
+            return
+
+        elif self.current_mode == Mode.ASSISTED:
+            self.get_logger().error("Assisted teleop is not yet supported!")
+            return
+
+        if self.closest_point_bl is None:
+            self.get_logger().error("Seedling waypoint unknown. Stopping.")
+            self.twist_pub.publish(Twist())
+            return
+
+        # Check yaw error. If |yaw err| > pi/4 (45 deg), point turn.
+        goal_point = self.closest_point_bl
+
+        distance_remaining = np.linalg.norm(goal_point)
+        # print(goal_point)
+        if goal_point is None:
+            self.get_logger().warning(
+                "Could not get goal point in base_link. Skipping trajectory generation."
+            )
+            return
+
+        yaw_error = self.getYawError(goal_point)
+
+        print(f"Yaw err: {yaw_error:.1f}, dist {distance_remaining:.1f}")
+
+        POINT_TURN_YAW_ERROR_THRESHOLD = np.pi / 8  # 22.5 degrees
+        if abs(yaw_error) > POINT_TURN_YAW_ERROR_THRESHOLD:
+
+            direction_string = "left" if yaw_error > 0 else "right"
+            self.publishStatus(f"Turning {direction_string} toward seedling")
+
+            self.pointTurnFromYawError(yaw_error)
+            return
+
+        Kp_linear = 0.25
+        Kp_angular = 2.0
+        target_speed = distance_remaining * Kp_linear
+        target_angular = yaw_error * Kp_angular
+        SPEED_LIMIT = 1.0  # m/s
+        target_speed = min(target_speed, SPEED_LIMIT)
+
+        # cmd_msg = Twist()
+        # self.twist_pub.publish(cmd_msg)
+        # return
+
+        # print(self.candidates)
+        # exit()
+        cmd_msg = Twist()
+        cmd_msg.linear.x = target_speed
+        cmd_msg.angular.z = target_angular
+        self.twist_pub.publish(cmd_msg)
+        self.publishStatus(
+            f"Driving {target_speed:.2} m/s, {distance_remaining:.2}m away"
+        )
+
+        return
 
     def updateTrajectory(self):
 

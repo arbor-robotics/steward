@@ -76,6 +76,7 @@ def generate_launch_description():
     cost_maps = Node(package="costmaps", executable="cost_map_node")
     behavior_fsm = Node(package="behavior", executable="fsm")
     plan_manager = Node(package="behavior", executable="plan_manager")
+    trajectory_planner = Node(package="trajectory_planning", executable="planner")
 
     return LaunchDescription(
         [
@@ -87,10 +88,10 @@ def generate_launch_description():
             # PERCEPTION
             occ_grid,
             # PLANNING
+            # cost_maps,
             plan_manager,
-            cost_maps,
             behavior_fsm,
-            # trajectory_planner,
+            trajectory_planner,
             # CONTROL
             # SAFETY
             health_monitor,
