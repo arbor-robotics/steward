@@ -99,6 +99,7 @@ class PlannerNode(Node):
         self.current_mode = Mode.STOPPED
         self.is_planting = False
         self.closest_point_bl = None
+        self.remaining_seedling_count = 0
 
         self.create_timer(0.1, self.updateTrajectorySimply)
 
@@ -472,9 +473,10 @@ class PlannerNode(Node):
 
     def planCb(self, msg: PlantingPlan):
         print(f"Got plan with {len(msg.seedlings)} seedlings")
-        for seedling in msg.seedlings:
-            seedling: Seedling
-            print(seedling.species_id)
+        self.remaining_seedling_count = len(msg.seedlings)
+        # for seedling in msg.seedlings:
+        #     seedling: Seedling
+        #     print(seedling.species_id)
 
     def getYawError(self, goal_point_bl):
         yaw_error = math.atan2(goal_point_bl[0], goal_point_bl[1]) - np.pi / 2
@@ -532,6 +534,12 @@ class PlannerNode(Node):
 
         if self.closest_point_bl is None:
             self.get_logger().error("Seedling waypoint unknown. Stopping.")
+            self.twist_pub.publish(Twist())
+            return
+
+        if self.remaining_seedling_count < 1:
+            # self.get_logger().error("Seedling waypoint unknown. Stopping.")
+            self.publishStatus("Plan complete.")
             self.twist_pub.publish(Twist())
             return
 
