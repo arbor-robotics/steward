@@ -18,8 +18,11 @@ from scipy.spatial.transform import Rotation as R
 
 import pynmea2
 from pynmea2.types import talker
+import pandas as pd
 import serial
 import utm
+
+from matplotlib import pyplot as plt
 
 from sbp.client.drivers.pyserial_driver import PySerialDriver
 from sbp.client import Handler, Framer
@@ -50,6 +53,9 @@ class InterfaceNode(Node):
         self.yaw_enu = None
         self.track_deg = None
         self.speed = None
+
+        self.yaw_hist = [0] * 100
+        self.smooth_yaw_hist = [0] * 100
 
         lat0, lon0, alt0 = self.get_parameter("map_origin_lat_lon_alt_degrees").value
         self.origin_utm_x, self.origin_utm_y, _, __ = utm.from_latlon(lat0, lon0)
@@ -97,6 +103,32 @@ class InterfaceNode(Node):
         odom_msg.pose.pose.position.z = swift_msg.altitude
 
         yaw = self.trueTrackToEnuRads(swift_msg.track)
+
+        # BEGIN YAW SMOOTHING
+
+        self.yaw_hist.append(yaw)
+        if len(self.yaw_hist) > 100:
+            self.yaw_hist = self.yaw_hist[-100:]
+
+        SMOOTH_HIST_LEN = 10
+        mean = np.average(
+            self.yaw_hist[-SMOOTH_HIST_LEN:], weights=np.arange(0, SMOOTH_HIST_LEN)
+        )
+        print(mean)
+        self.smooth_yaw_hist.append(mean)
+        if len(self.smooth_yaw_hist) > 100:
+            self.smooth_yaw_hist = self.smooth_yaw_hist[-100:]
+
+        # fig, (ax1) = plt.subplots(1, 1)
+        # ax1.plot(self.yaw_hist, c="red")
+        # ax1.plot(self.smooth_yaw_hist, c="blue")
+        # plt.savefig("yaw.png")
+        # plt.close(fig)
+
+        yaw = mean
+
+        # END YAW PLOT
+
         q = R.from_euler("xyz", [0.0, 0.0, yaw]).as_quat()
 
         odom_msg.pose.pose.orientation.x = q[0]

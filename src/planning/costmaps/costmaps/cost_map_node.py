@@ -53,13 +53,16 @@ class CostMapNode(Node):
         self.seedling_points = None
         self.seedling_pts_bl = None
         self.cached_occ = np.zeros((100, 100))
+        self.ego_pos = None
 
     def onSeedlingReached(self, msg: Empty):
         updated_points = []
+        if self.ego_pos is None:
+            return
 
         for point in self.seedling_points:
             dist = pdist([self.ego_pos, point])[0]
-            if dist > 2.0:
+            if dist > 4.0:
                 updated_points.append(point)
 
         self.seedling_points = updated_points

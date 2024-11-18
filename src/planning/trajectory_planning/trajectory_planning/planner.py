@@ -34,6 +34,7 @@ from steward_msgs.msg import (
     SystemwideStatus,
     TrajectoryCandidates,
     TrajectoryCandidate,
+    Mode,
 )
 from sensor_msgs.msg import PointCloud2, PointField
 from std_msgs.msg import Header, String, Float32
@@ -64,12 +65,15 @@ class PlannerNode(Node):
             GeoPoint, "/planning/goal_pose_geo", self.goalPointGeoCb, 1
         )
         self.create_subscription(Float32, "/gnss/yaw", self.egoYawCb, 1)
+        self.create_subscription(Float32, "/cmd_vel/teleop", self.teleopCb, 1)
+        self.create_subscription(Mode, "/planning/current_mode", self.currentModeCb, 1)
 
         self.twist_pub = self.create_publisher(Twist, "/cmd_vel", 1)
         self.twist_path_pub = self.create_publisher(Path, "/cmd_vel/path", 1)
         self.candidates_pub = self.create_publisher(
             TrajectoryCandidates, "/planning/candidates", 1
         )
+        self.diagnostic_pub = self.create_publisher(DiagnosticStatus, "/diagnostics", 1)
 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
@@ -82,8 +86,22 @@ class PlannerNode(Node):
         self.seedling_points = []
         self.total_cost_map = None
         self.grid_info = None
+        self.teleop_twist = Twist()
+        self.current_mode = Mode.STOPPED
 
         self.create_timer(0.1, self.updateTrajectory)
+
+    def publishStatus(self, descr: str, level=DiagnosticStatus.OK):
+
+        status_msg = DiagnosticStatus(name=self.get_name(), message=descr, level=level)
+
+        self.diagnostic_pub.publish(status_msg)
+
+    def teleopCb(self, msg: Twist):
+        self.teleop_twist = msg
+
+    def currentModeCb(self, msg: Mode):
+        self.current_mode = msg.level
 
     def egoYawCb(self, msg: Float32):
         # self.get_logger().info("Updated ego yaw")
@@ -204,7 +222,7 @@ class PlannerNode(Node):
         # ax.plot(x, x, "--", linewidth=5, color="firebrick")
         # plt.savefig("candidates.png")
 
-    def generateCandidates(self, top_speed=1.5):
+    def generateCandidates(self, top_speed=0.8):
 
         dt = 0.1  # sec
         time_horizon = 5.0  # sec
@@ -299,52 +317,6 @@ class PlannerNode(Node):
         plt.savefig("candidates.png")
 
         self.candidates = candidates
-
-    def getCandidates(
-        self,
-        min_speed=0.5,
-        max_speed=1.0,
-        speed_steps=4,
-        min_omega=-0.3,
-        max_omega=0.3,
-        omega_steps=7,
-        time_horizon=10.0,
-        dt=0.5,
-    ) -> list[Candidate]:
-        V = np.linspace(min_speed, max_speed, speed_steps)
-        Omega = np.linspace(min_omega, max_omega, omega_steps)
-
-        trajectories = []
-        candidates: list[Candidate] = []
-
-        for v in V:
-            for omega in Omega:
-                pose = np.zeros(
-                    4
-                )  # Start at ego position, zero speed, zero (relative) yaw
-                trajectory = []
-
-                for t in np.arange(0, time_horizon, dt):
-                    trajectory.append(pose.copy())
-                    pose[0] += v * math.cos(pose[2]) * dt
-                    pose[1] += v * math.sin(pose[2]) * dt
-                    pose[2] += omega * dt
-                    pose[3] = t + dt
-
-                trajectory = np.asarray(trajectory)
-                trajectories.append(trajectory)
-                candidates.append(Candidate(v, omega, trajectory))
-
-        # plt.figure()
-        # plt.gca().set_aspect("equal")
-
-        # for trajectory in trajectories:
-        #     trajectory = np.asarray(trajectory)
-        # plt.plot(trajectory[:, 0], trajectory[:, 1])
-
-        # plt.show()
-
-        return candidates
 
     def getCandidateMask(self, candidate: Candidate, collision_radius: float = 1.0):
 
@@ -490,24 +462,6 @@ class PlannerNode(Node):
         return pts_tfed
 
     def getClosestSeedlingInBaselink(self):
-        # if self.seedling_points is None or len(self.seedling_points) < 1:
-        #     self.get_logger().warning(
-        #         f"Could not find closest seedling point. Seedling points unknown."
-        #     )
-        #     return None
-
-        # closest_distance = 999999.9
-        # for seedling_pt in self.seedling_points:
-        #     seedling_x, seedling_y = seedling_pt
-
-        #     dist = pdist([self.ego_pos, [seedling_x, seedling_y]])[0]
-
-        #     if dist < closest_distance:
-        #         closest_distance = dist
-        #         closest_seedling = seedling_pt
-
-        # closest_seedling_bl = self.transformToBaselink([closest_seedling])
-        # print(self.ego_yaw, closest_seedling_bl)
 
         if self.total_cost_map is None:
             self.get_logger().warning(
@@ -515,6 +469,7 @@ class PlannerNode(Node):
             )
             return None
 
+        # GIGA JANK WSH
         x = self.total_cost_map
         pixel_coords = np.unravel_index(x.argmin(), x.shape)
         return [pixel_coords[1] - 40, pixel_coords[0] - 50]
@@ -583,17 +538,31 @@ class PlannerNode(Node):
 
         return yaw_error
 
-    def pointTurnFromYawError(self, yaw_error, omega=0.4):
+    def pointTurnFromYawError(self, yaw_error, omega=0.7):
         cmd_msg = Twist()
 
         if yaw_error < 0:
             omega *= -1
 
+        cmd_msg.linear.x = 0.5
         cmd_msg.angular.z = omega
 
         self.twist_pub.publish(cmd_msg)
 
+    def publishStopTwist(self):
+        cmd_msg = Twist()  # Default message is already "stop" (all zeros)
+        self.twist_pub.publish(cmd_msg)
+
     def updateTrajectory(self):
+
+        if self.current_mode == Mode.TELEOP:
+            self.twist_pub.publish(self.teleop_twist)
+            self.publishStatus("Following teleop commands.")
+            return
+        elif self.current_mode == Mode.STOPPED:
+            self.publishStopTwist()
+            self.publishStatus("Paused.")
+            return
 
         if self.total_cost_map is None:
             self.get_logger().warning(
@@ -620,13 +589,25 @@ class PlannerNode(Node):
             self.get_logger().warning(f"Could not get ego position: {ex}")
             return
 
+        # Check if all seedlings have been reached
+        # This check right now is GIGA JANK, need to fix!! WSH.
+        if np.median(self.total_cost_map) < 30:
+            self.publishStopTwist()
+            self.publishStatus("No planting spots left. Stopped.")
+            return
+
         # Check yaw error. If |yaw err| > pi/4 (45 deg), point turn.
         goal_point = self.getClosestSeedlingInBaselink()
-        print(goal_point)
+        # print(goal_point)
         if goal_point is None:
             self.get_logger().warning(
                 "Could not get goal point in base_link. Skipping trajectory generation."
             )
+            self.publishStatus(
+                "Could not get goal point in base_link. Skipping trajectory generation.",
+                level=DiagnosticStatus.ERROR,
+            )
+
             return
 
         yaw_error = self.getYawError(goal_point)
@@ -634,6 +615,7 @@ class PlannerNode(Node):
         POINT_TURN_YAW_ERROR_THRESHOLD = np.pi / 8
         if abs(yaw_error) > POINT_TURN_YAW_ERROR_THRESHOLD:
             self.pointTurnFromYawError(yaw_error)
+            self.publishStatus(f"Turning {yaw_error:.2f} rads to target")
             return
 
         # cmd_msg = Twist()
@@ -679,10 +661,11 @@ class PlannerNode(Node):
                 cmd_msg.angular.z = best_candidate[1]
                 self.twist_pub.publish(cmd_msg)
                 return
-            else:
-                print(f"No obstacle-free candidates found at speed {speed}")
+            # else:
+            #     print(f"No obstacle-free candidates found at speed {speed}")
 
         self.twist_pub.publish(cmd_msg)
+        self.publishStatus(f"Turning {yaw_error:.2f} rads to target")
 
         return
 

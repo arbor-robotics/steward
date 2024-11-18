@@ -34,7 +34,7 @@ class FsmNode(Node):
 
         self.setUpParameters()
 
-        self.get_logger().info("Hello, world.")
+        self.get_logger().info("Hello, new world.")
 
         self.create_subscription(
             Mode, "/planning/requested_mode", self.requestedModeCb, 1
@@ -52,11 +52,13 @@ class FsmNode(Node):
         self.current_mode = Mode.STOPPED
         self.seedling_points = []
 
+        self.seedling_reached_distance = 2.0  # meters
         self.create_timer(0.1, self.publishCurrentMode)
         self.create_timer(0.1, self.checkSeedlingDistance)
-        self.seedling_reached_distance = 1.0  # meters
 
     def checkSeedlingDistance(self):
+
+        # print("CHECKING")
         try:
             bl_to_map_tf = self.tf_buffer.lookup_transform(
                 "map", "base_link", rclpy.time.Time()
@@ -66,9 +68,12 @@ class FsmNode(Node):
             self.ego_pos = [ego_x, ego_y]
 
         except TransformException as ex:
+            print("Transform unavailable")
             return
 
         updated_points = []
+
+        min_dist = 99999.9
 
         for point in self.seedling_points:
             dist = pdist([point, self.ego_pos])
@@ -77,8 +82,11 @@ class FsmNode(Node):
                 print("SEEDLING REACHED")
                 self.seedling_reached_pub.publish(Empty())
             else:
+                if dist < min_dist:
+                    min_dist = dist
                 updated_points.append(point)
 
+            print(min_dist)
         self.seedling_points = updated_points
 
     def latLonToMap(self, lat: float, lon: float):

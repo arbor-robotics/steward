@@ -268,7 +268,7 @@ def generate_launch_description():
             rosbridge_server,
             warthog_bridge,
             # PERCEPTION
-            # occ_grid,
+            occ_grid,
             # PLANNING
             cost_maps,
             behavior_fsm,

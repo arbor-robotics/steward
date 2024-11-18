@@ -133,7 +133,7 @@ class OccupancyGridNode(Node):
         # The ZED camera is tilted about 10 degrees down, so we should
         # adjust the points accordingly
 
-        rot_matrix = R.from_euler("xyz", [0.0, -10.0, 0.0], degrees=True).as_matrix()
+        rot_matrix = R.from_euler("xyz", [0.0, -12.0, 0.0], degrees=True).as_matrix()
 
         return pts @ rot_matrix
 

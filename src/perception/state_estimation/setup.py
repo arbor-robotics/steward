@@ -21,7 +21,6 @@ setup(
         "console_scripts": [
             "ekf_helper = state_estimation.ekf_helper:main",
             "particle_filter = state_estimation.particle_filter:main",
-            "ekf_helper = state_estimation.ekf_helper:main",
         ],
     },
 )
