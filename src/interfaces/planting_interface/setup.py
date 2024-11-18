@@ -1,6 +1,6 @@
 from setuptools import find_packages, setup
 
-package_name = "behavior"
+package_name = "planting_interface"
 
 setup(
     name=package_name,
@@ -18,9 +18,8 @@ setup(
     license="TODO: License declaration",  # See package.xml
     tests_require=["pytest"],
     entry_points={
-        f"console_scripts": [
-            f"fsm = {package_name}.fsm:main",
-            f"plan_manager = {package_name}.plan_manager:main",
+        "console_scripts": [
+            "interface = planting_interface.interface:main",
         ],
     },
 )

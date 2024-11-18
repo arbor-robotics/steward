@@ -37,7 +37,7 @@ from steward_msgs.msg import (
     Mode,
 )
 from sensor_msgs.msg import PointCloud2, PointField
-from std_msgs.msg import Header, String, Float32
+from std_msgs.msg import Header, String, Float32, Bool
 
 
 class Candidate:
@@ -56,24 +56,24 @@ class PlannerNode(Node):
 
         self.setUpParameters()
 
-        self.generateCandidates()
-
         self.create_subscription(String, "planning/plan_json", self.planCb, 1)
-        self.create_subscription(Twist, "/cmd_vel", self.cmdVelCb, 1)
+        self.create_subscription(Twist, "/cmd_vel/teleop", self.teleopTwistCb, 1)
         self.create_subscription(OccupancyGrid, "/cost/total", self.totalCostCb, 1)
         self.create_subscription(
             GeoPoint, "/planning/goal_pose_geo", self.goalPointGeoCb, 1
         )
         self.create_subscription(Float32, "/gnss/yaw", self.egoYawCb, 1)
-        self.create_subscription(Float32, "/cmd_vel/teleop", self.teleopCb, 1)
         self.create_subscription(Mode, "/planning/current_mode", self.currentModeCb, 1)
+        self.create_subscription(Bool, "/behavior/is_planting", self.isPlantingCb, 1)
 
         self.twist_pub = self.create_publisher(Twist, "/cmd_vel", 1)
         self.twist_path_pub = self.create_publisher(Path, "/cmd_vel/path", 1)
         self.candidates_pub = self.create_publisher(
             TrajectoryCandidates, "/planning/candidates", 1
         )
-        self.diagnostic_pub = self.create_publisher(DiagnosticStatus, "/diagnostics", 1)
+        self.status_pub = self.create_publisher(DiagnosticStatus, "/diagnostics", 1)
+
+        self.generateCandidates()
 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
@@ -86,19 +86,17 @@ class PlannerNode(Node):
         self.seedling_points = []
         self.total_cost_map = None
         self.grid_info = None
-        self.teleop_twist = Twist()
+        self.cached_teleop = Twist()
         self.current_mode = Mode.STOPPED
+        self.is_planting = False
 
         self.create_timer(0.1, self.updateTrajectory)
 
-    def publishStatus(self, descr: str, level=DiagnosticStatus.OK):
+    def isPlantingCb(self, msg: Bool):
+        self.is_planting = msg.data
 
-        status_msg = DiagnosticStatus(name=self.get_name(), message=descr, level=level)
-
-        self.diagnostic_pub.publish(status_msg)
-
-    def teleopCb(self, msg: Twist):
-        self.teleop_twist = msg
+    def teleopTwistCb(self, msg: Twist):
+        self.cached_teleop = msg
 
     def currentModeCb(self, msg: Mode):
         self.current_mode = msg.level
@@ -123,109 +121,7 @@ class PlannerNode(Node):
         self.total_cost_map = arr
         self.grid_info = msg.info
 
-    def cmdVelCb(self, msg: Twist):
-
-        # if self.ego_pos is None:
-        #     self.get_logger().warning(f"Ego position unavailable.")
-        #     return
-
-        # if self.ego_yaw is None:
-        #     self.get_logger().warning(f"Ego yaw unavailable.")
-        #     return
-
-        # Visualize the twist trajectory up to some time horizon
-        TIME_HORIZON = 0.5  # sec
-        dt = 0.05  # sec
-
-        # v = msg.linear.x
-        # omega = msg.angular.z
-
-        # FAKE DATA
-
-        V = np.linspace(0.2, 1.0, 5)
-        Omega = np.linspace(-0.2, 0.2, 5)
-
-        candidates = []
-
-        for v in V:
-            for omega in Omega:
-                pose = np.zeros(4)
-                poses = []
-
-                for t in np.arange(0, TIME_HORIZON, dt):
-                    poses.append(pose.copy())
-                    pose[0] += v * math.cos(pose[2])
-                    pose[1] += v * math.sin(pose[2])
-                    pose[2] += omega
-                    pose[3] = t + dt
-
-                poses = np.asarray(poses)
-                candidates.append(poses)
-
-        # TODO WSH: Add a "stop" candidate with v & omega = 0.
-
-        v_user = msg.linear.x
-        omega_user = msg.angular.z
-
-        pose = np.zeros(4)
-        poses = []
-
-        for t in np.arange(0, TIME_HORIZON, dt):
-            poses.append(pose.copy())
-            pose[0] += v_user * math.cos(pose[2])
-            pose[1] += v_user * math.sin(pose[2])
-            pose[2] += omega_user
-            pose[3] = t + dt
-
-        poses = np.asarray(poses)
-
-        # Form a Path message
-        path_msg = Path()
-        path_msg.header.frame_id = "base_link"
-        path_msg.header.stamp = self.get_clock().now().to_msg()
-
-        # fig, ax = plt.subplots()
-        x = range(100)
-
-        if self.total_cost_map is None:
-            return
-
-        # ax.imshow(self.total_cost_map, extent=[-8, 12, -10, 10], cmap="summer")
-
-        # candidate
-        for pose in poses:
-            pose_msg = PoseStamped()
-            pose_msg.header.frame_id = "base_link"
-            pose_msg.header.stamp = self.dt_to_time_msg(pose[3])
-
-            pose_msg.pose.position.x = pose[0]
-            pose_msg.pose.position.y = pose[1]
-            pose_msg.pose.orientation.z = math.cos(pose[2] / 2)
-            pose_msg.pose.orientation.w = math.sin(pose[2] / 2)
-            path_msg.poses.append(pose_msg)
-
-        # for candidate in candidates:
-        #     ax.plot(candidate[:, 0], candidate[:, 1], color="lightcoral", linewidth=2)
-
-        # ax.plot(poses[:, 0], poses[:, 1], color="red", linewidth=5)
-
-        rect = patches.Rectangle(
-            (-0.5, -0.5), 1, 1, linewidth=3, edgecolor="white", facecolor="none"
-        )
-        # ax.add_patch(rect)
-
-        self.twist_path_pub.publish(path_msg)
-
-        # total_cost = self.get_total_cost(poses)
-        # print(total_cost)
-
-        # ax.plot(x, x, "--", linewidth=5, color="firebrick")
-        # plt.savefig("candidates.png")
-
-    def generateCandidates(self, top_speed=0.8):
-
-        dt = 0.1  # sec
-        time_horizon = 5.0  # sec
+    def generateCandidates(self, top_speed=1.5, time_horizon=5.0, dt=0.5):
 
         # Start with top speed
         trajectories = []
@@ -234,6 +130,7 @@ class PlannerNode(Node):
         v = top_speed
         Omega = np.linspace(-0.1, 0.1, 3)
         candidates_at_speed = []
+        mega_mask = np.zeros((100, 100))
         for omega in Omega:
             pose = np.zeros(4)  # Start at ego position, zero speed, zero (relative) yaw
             trajectory = []
@@ -245,13 +142,25 @@ class PlannerNode(Node):
                 pose[2] += omega * dt
                 pose[3] = t + dt
 
-            trajectory = np.asarray(trajectory)
-            trajectories.append(trajectory)
-            candidate = Candidate(v, omega, trajectory)
-            mask = self.getCandidateMask(candidate)
-            candidates_at_speed.append([omega, mask])
-            # plt.imshow(mask, extent=[-8, 12, -10, 10])
-            # plt.show()
+            for second_omega in Omega:
+                second_trajectory = trajectory.copy()
+                second_pose = pose.copy()
+
+                for t in np.arange(0, time_horizon, dt):
+                    second_trajectory.append(second_pose.copy())
+                    second_pose[0] += v * math.cos(second_pose[2]) * dt
+                    second_pose[1] += v * math.sin(second_pose[2]) * dt
+                    second_pose[2] += second_omega * dt
+                    second_pose[3] = t + dt
+
+                second_trajectory = np.asarray(second_trajectory)
+                trajectories.append(second_trajectory)
+                candidate = Candidate(v, omega, second_trajectory)
+                mask = self.getCandidateMask(candidate)
+                candidates_at_speed.append([omega, mask])
+                mega_mask = np.logical_or(mega_mask, mask)
+        # plt.imshow(mega_mask, extent=[-8, 12, -10, 10])
+        # plt.show()
 
         candidates.append([v, candidates_at_speed])
 
@@ -270,17 +179,35 @@ class PlannerNode(Node):
                 pose[2] += omega * dt
                 pose[3] = t + dt
 
-            trajectory = np.asarray(trajectory)
-            trajectories.append(trajectory)
-            candidate = Candidate(v, omega, trajectory)
-            mask = self.getCandidateMask(candidate)
-            candidates_at_speed.append([omega, mask])
+            for second_omega in Omega:
+                second_trajectory = trajectory.copy()
+                second_pose = pose.copy()
+
+                for t in np.arange(0, time_horizon, dt):
+                    second_trajectory.append(second_pose.copy())
+                    second_pose[0] += v * math.cos(second_pose[2]) * dt
+                    second_pose[1] += v * math.sin(second_pose[2]) * dt
+                    second_pose[2] += second_omega * dt
+                    second_pose[3] = t + dt
+
+                second_trajectory = np.asarray(second_trajectory)
+                trajectories.append(second_trajectory)
+                candidate = Candidate(v, omega, second_trajectory)
+                mask = self.getCandidateMask(candidate)
+                candidates_at_speed.append([omega, mask])
+                mega_mask = np.logical_or(mega_mask, mask)
+
             # plt.imshow(mask, extent=[-8, 12, -10, 10])
             # plt.show()
+
+        # plt.imshow(mega_mask, extent=[-8, 12, -10, 10])
+        # plt.show()
 
         candidates.append([v, candidates_at_speed])
 
         # Now low speed
+        mega_mask = np.zeros((100, 100))
+
         v = top_speed * 0.333
         Omega = np.linspace(-0.3, 0.3, 7)
         candidates_at_speed = []
@@ -295,20 +222,66 @@ class PlannerNode(Node):
                 pose[2] += omega * dt
                 pose[3] = t + dt
 
-            trajectory = np.asarray(trajectory)
-            trajectories.append(trajectory)
-            candidate = Candidate(v, omega, trajectory)
-            mask = self.getCandidateMask(candidate)
-            candidates_at_speed.append([omega, mask])
-            # plt.imshow(mask, extent=[-8, 12, -10, 10])
-            # plt.show()
+            for second_omega in Omega:
+                second_trajectory = trajectory.copy()
+                second_pose = pose.copy()
+
+                for t in np.arange(0, time_horizon, dt):
+                    second_trajectory.append(second_pose.copy())
+                    second_pose[0] += v * math.cos(second_pose[2]) * dt
+                    second_pose[1] += v * math.sin(second_pose[2]) * dt
+                    second_pose[2] += second_omega * dt
+                    second_pose[3] = t + dt
+
+                second_trajectory = np.asarray(second_trajectory)
+                trajectories.append(second_trajectory)
+                candidate = Candidate(v, omega, second_trajectory)
+                mask = self.getCandidateMask(candidate)
+                candidates_at_speed.append([omega, mask])
+                mega_mask = np.logical_or(mega_mask, mask)
+
+        # plt.imshow(mega_mask, extent=[-8, 12, -10, 10])
+        # plt.show()
 
         candidates.append([v, candidates_at_speed])
 
         plt.figure()
         plt.gca().set_aspect("equal")
 
-        print(candidates)
+        candidates_msg = TrajectoryCandidates()
+
+        index = 0
+
+        for v, candidates_at_speed in candidates:
+
+            for omega, mask in candidates_at_speed:
+                candidate_msg = TrajectoryCandidate()
+                candidate_msg.omega = omega
+                candidate_msg.speed = v
+                trajectory = trajectories[index]
+
+                path_msg = Path()
+
+                stamp = self.get_clock().now().to_msg()
+                for x, y, omega, t in trajectory:
+                    pose_msg = PoseStamped()
+                    pose_msg.pose.position.x = x
+                    pose_msg.pose.position.y = y
+                    pose_msg.header.frame_id = "base_link"
+                    pose_msg.header.stamp = stamp
+
+                    path_msg.poses.append(pose_msg)
+
+                candidate_msg.trajectory = path_msg
+                candidates_msg.candidates.append(candidate_msg)
+
+                print(v, omega, trajectory)
+
+                index += 1
+
+        self.candidates_msg = candidates_msg
+
+        self.candidates_pub.publish(candidates_msg)
 
         for trajectory in trajectories:
             trajectory = np.asarray(trajectory)
@@ -385,13 +358,6 @@ class PlannerNode(Node):
             total_cost *= 0.5
 
         return total_cost
-
-    def dt_to_time_msg(self, dt: float):
-        msg = self.get_clock().now().to_msg()
-        msg.nanosec += int(1e9 * (dt - math.floor(dt)))
-        msg.sec += math.floor(dt)
-
-        return msg
 
     def latLonToMap(self, lat: float, lon: float):
         lat0, lon0, _ = self.get_parameter("map_origin_lat_lon_alt_degrees").value
@@ -614,6 +580,10 @@ class PlannerNode(Node):
 
         POINT_TURN_YAW_ERROR_THRESHOLD = np.pi / 8
         if abs(yaw_error) > POINT_TURN_YAW_ERROR_THRESHOLD:
+
+            direction_string = "left" if yaw_error > 0 else "right"
+            self.publishStatus(f"Turning {direction_string} toward seedling")
+
             self.pointTurnFromYawError(yaw_error)
             self.publishStatus(f"Turning {yaw_error:.2f} rads to target")
             return
@@ -637,6 +607,10 @@ class PlannerNode(Node):
 
                 max_cost = np.max(self.total_cost_map[mask])
                 # print(max_cost)
+                # if speed > 0.49 and omega > 0.29:
+                #     plt.imshow(mask)
+                #     plt.title(f"{max_cost}")
+                #     plt.show()
 
                 if max_cost >= 100:
                     print(f"Obst [{speed}, {omega}] had obstacles")
@@ -660,6 +634,7 @@ class PlannerNode(Node):
                 cmd_msg.linear.x = best_candidate[0]
                 cmd_msg.angular.z = best_candidate[1]
                 self.twist_pub.publish(cmd_msg)
+                self.publishStatus(f"Driving toward seedling")
                 return
             # else:
             #     print(f"No obstacle-free candidates found at speed {speed}")
@@ -668,56 +643,6 @@ class PlannerNode(Node):
         self.publishStatus(f"Turning {yaw_error:.2f} rads to target")
 
         return
-
-        # Get cost of each candidate
-        start = time()
-        for candidate in candidates:
-            cost = self.getTotalCost(candidate)
-            candidate.cost = cost
-
-        print(f"Took {time() - start} sec")
-
-        # Publish candidates
-        candidates_msg = TrajectoryCandidates()
-        for candidate in candidates:
-            candidate_msg = TrajectoryCandidate(
-                cost=float(candidate.cost), speed=candidate.speed, omega=candidate.omega
-            )
-            path_msg = Path()
-            path_msg.header.stamp = self.get_clock().now().to_msg()
-            path_msg.header.frame_id = "base_link"
-
-            for pose in candidate.trajectory:
-                pose_msg = PoseStamped()
-                pose_msg.pose.position.x = pose[0]
-                pose_msg.pose.position.y = pose[1]
-                path_msg.poses.append(pose_msg)
-
-            candidate_msg.trajectory = path_msg
-            candidates_msg.candidates.append(candidate_msg)
-
-        self.candidates_pub.publish(candidates_msg)
-
-        # Choose candidate with lowest cost
-        lowest_cost = 9999999
-        best_candidate = None
-
-        for candidate in candidates:
-            if candidate.cost < lowest_cost:
-                lowest_cost = candidate.cost
-                best_candidate = candidate
-
-        # Extract v, omega from selected candidate
-        v = best_candidate.speed
-        omega = best_candidate.omega
-
-        # Convert v, theta to twist message
-        twist_msg = Twist()
-        twist_msg.angular.z = omega
-        twist_msg.linear.x = v
-
-        # Publish twist
-        self.twist_pub.publish(twist_msg)
 
     def onGoalPointReached(self):
 

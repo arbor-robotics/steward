@@ -19,7 +19,7 @@ import utm
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
 from std_msgs.msg import Header
 from steward_msgs.msg import FailedChecks, HealthCheck, SystemwideStatus, Mode
-from std_msgs.msg import Empty, String
+from std_msgs.msg import Empty, String, Bool
 
 # class SystemwideStatus:
 #     HEALTHY = 0
@@ -39,11 +39,16 @@ class FsmNode(Node):
         self.create_subscription(
             Mode, "/planning/requested_mode", self.requestedModeCb, 1
         )
-        self.create_subscription(String, "/planning/plan_json", self.planCb, 1)
+        # self.create_subscription(String, "/planning/plan_json", self.planCb, 1)
 
         self.current_mode_pub = self.create_publisher(Mode, "/planning/current_mode", 1)
-        self.seedling_reached_pub = self.create_publisher(
-            Empty, "/behavior/seedling_reached", 1
+        self.planting_locked_pub = self.create_publisher(
+            Bool, "/behavior/is_planting", 1
+        )
+        self.status_pub = self.create_publisher(DiagnosticStatus, "/diagnostics", 1)
+
+        self.create_subscription(
+            Empty, "/behavior/on_seedling_reached", self.onSeedlingReachedCb, 1
         )
 
         self.tf_buffer = Buffer()
@@ -54,81 +59,31 @@ class FsmNode(Node):
 
         self.seedling_reached_distance = 2.0  # meters
         self.create_timer(0.1, self.publishCurrentMode)
-        self.create_timer(0.1, self.checkSeedlingDistance)
+        self.seedling_reached_distance = 1.0  # meters
+        self.is_planting = False
+        self.PLANTING_DURATION = 3  # seconds
+        self.planting_start_time = time()
 
-    def checkSeedlingDistance(self):
+    def onSeedlingReachedCb(self, msg: Empty):
+        print("Seedling reached!")
 
-        # print("CHECKING")
-        try:
-            bl_to_map_tf = self.tf_buffer.lookup_transform(
-                "map", "base_link", rclpy.time.Time()
-            )
-            ego_x = bl_to_map_tf.transform.translation.x
-            ego_y = bl_to_map_tf.transform.translation.y
-            self.ego_pos = [ego_x, ego_y]
+        self.is_planting = True
+        self.planting_start_time = time()
 
-        except TransformException as ex:
-            print("Transform unavailable")
-            return
-
-        updated_points = []
-
-        min_dist = 99999.9
-
-        for point in self.seedling_points:
-            dist = pdist([point, self.ego_pos])
-
-            if dist < self.seedling_reached_distance:
-                print("SEEDLING REACHED")
-                self.seedling_reached_pub.publish(Empty())
-            else:
-                if dist < min_dist:
-                    min_dist = dist
-                updated_points.append(point)
-
-            print(min_dist)
-        self.seedling_points = updated_points
-
-    def latLonToMap(self, lat: float, lon: float):
-        lat0, lon0, _ = self.get_parameter("map_origin_lat_lon_alt_degrees").value
-        origin_x, origin_y, _, __ = utm.from_latlon(lat0, lon0)
-
-        x, y, _, __ = utm.from_latlon(lat, lon)
-
-        x = x - origin_x
-        y = y - origin_y
-
-        return (x, y)
-
-    def planCb(self, msg: String):
-
-        print("Received plan!")
-
-        try:
-            plan_obj = json.loads(msg.data)
-        except json.decoder.JSONDecodeError as e:
-            self.get_logger().error(f"Could not process plan message: {e}")
-            return
-
-        try:
-            seedlings: list[object] = plan_obj["seedlings"]
-
-            self.seedling_points = []
-            print("Updated seedling_points!")
-
-            for seedling in seedlings:
-                seedling_x, seedling_y = self.latLonToMap(
-                    seedling["lat"], seedling["lon"]
-                )
-
-                self.seedling_points.append([seedling_x, seedling_y])
-
-            print(self.seedling_points)
-        except KeyError as e:
-            self.get_logger().error(f"{e}")
+    def publishStatus(self, desc: str, level=DiagnosticStatus.OK):
+        self.status_pub.publish(
+            DiagnosticStatus(message=desc, level=level, name=self.get_name())
+        )
 
     def publishCurrentMode(self):
         self.current_mode_pub.publish(Mode(level=self.current_mode))
+
+        self.publishStatus(f"Setting current mode to {self.current_mode}")
+
+        if time() - self.planting_start_time > self.PLANTING_DURATION:
+            self.is_planting = False
+
+        self.planting_locked_pub.publish(Bool(data=self.is_planting))
 
     def requestedModeCb(self, msg: Mode):
         self.get_logger().info(f"Current mode is now {msg.level}")

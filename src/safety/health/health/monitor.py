@@ -74,7 +74,21 @@ class HealthMonitor(Node):
                 period_sec=0.2,
                 triggers=SystemwideStatus.OUT_OF_SERVICE,
                 message="Steward is unable to connect to the Warthog or the simulator and cannot operate.",
-            )
+            ),
+            Check(
+                "TRAJECTORY_PLANNING_FAILURE",
+                inspects=["trajectory_planner"],
+                period_sec=0.2,
+                triggers=SystemwideStatus.OUT_OF_SERVICE,
+                message="Motion planner unavailable",
+            ),
+            Check(
+                "BEHAVIOR_FAILURE",
+                inspects=["behavior_fsm"],
+                period_sec=0.2,
+                triggers=SystemwideStatus.OUT_OF_SERVICE,
+                message="Behavior planner unavailable",
+            ),
         ]
 
         self.statuses = {}
@@ -159,8 +173,9 @@ class HealthMonitor(Node):
                     if status.level <= check.max_status:
                         triggered = False
 
-            if (triggered or is_stale) and check.trigger_status > systemwide_status:
-                systemwide_status = check.trigger_status
+            if triggered or is_stale:
+                if check.trigger_status > systemwide_status:
+                    systemwide_status = check.trigger_status
 
                 check_msg = HealthCheck()
                 check_msg.code = check.code

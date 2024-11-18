@@ -22,8 +22,8 @@ import utm
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
 from geometry_msgs.msg import Pose, Point
 from nav_msgs.msg import OccupancyGrid, MapMetaData
-from std_msgs.msg import Header, String, Empty
-from steward_msgs.msg import FailedChecks, HealthCheck, SystemwideStatus
+from std_msgs.msg import Header, String, Empty, Float32
+from steward_msgs.msg import PlantingPlan, Seedling
 from sensor_msgs.msg import PointCloud2, PointField
 
 
@@ -33,39 +33,41 @@ class CostMapNode(Node):
 
         self.setUpParameters()
 
-        self.create_subscription(String, "/planning/plan_json", self.planCb, 1)
-        self.create_subscription(OccupancyGrid, "/cost/occupancy", self.occCb, 1)
         self.create_subscription(
-            Empty, "/behavior/seedling_reached", self.onSeedlingReached, 1
+            PlantingPlan, "/planning/remaining_plan", self.planCb, 1
         )
+        self.create_subscription(OccupancyGrid, "/cost/occupancy", self.occCb, 1)
+        # self.create_subscription(
+        #     Empty, "/behavior/on_seedling_reached", self.onSeedlingReached, 1
+        # )
 
         self.seedling_dist_map_pub = self.create_publisher(
             OccupancyGrid, "/cost/dist_to_seedlings", 1
         )
 
         self.total_cost_pub = self.create_publisher(OccupancyGrid, "/cost/total", 1)
-
+        self.distance_to_seedling_pub = self.create_publisher(
+            Float32, "/planning/distance_to_seedling", 1
+        )
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
 
         self.create_timer(0.1, self.updateCosts)
 
-        self.seedling_points = None
-        self.seedling_pts_bl = None
+        self.seedling_points = []
+        self.seedling_pts_bl = []
         self.cached_occ = np.zeros((100, 100))
         self.ego_pos = None
 
-    def onSeedlingReached(self, msg: Empty):
-        updated_points = []
-        if self.ego_pos is None:
-            return
+    # def onSeedlingReached(self, msg: Empty):
+    #     updated_points = []
 
-        for point in self.seedling_points:
-            dist = pdist([self.ego_pos, point])[0]
-            if dist > 4.0:
-                updated_points.append(point)
+    #     for point in self.seedling_points:
+    #         dist = pdist([self.ego_pos, point])[0]
+    #         if dist > 2.0:
+    #             updated_points.append(point)
 
-        self.seedling_points = updated_points
+    #     self.seedling_points = updated_points
 
     def occCb(self, msg: OccupancyGrid):
         arr = np.asarray(msg.data).reshape(msg.info.height, msg.info.width)
@@ -87,9 +89,9 @@ class CostMapNode(Node):
 
         start = time()
 
-        if self.seedling_points is None:
+        if self.seedling_points is None or len(self.seedling_points) < 1:
             self.get_logger().warning(
-                "Seedling locations not available. Skipping distance to seedling cost."
+                "Seedling LOCS not available. Skipping distance to seedling cost."
             )
             return np.ones((100, 100)) * 100
 
@@ -127,6 +129,8 @@ class CostMapNode(Node):
             if dist < closest_distance:
                 closest_distance = dist
                 closest_seedling = seedling_pt
+
+        self.distance_to_seedling_pub.publish(Float32(data=closest_distance))
 
         # self.get_logger().info(f"There are {len(nearby_seedlings)} nearby seedlings.")
 
@@ -225,19 +229,7 @@ class CostMapNode(Node):
 
         return distance_to_seedling_map.astype(np.uint8)
 
-    def updateSeedlingPoints(self):
-        # This will remove seedling points if they are close to the robot
-
-        if self.seedling_points is None:
-            return
-
-        new_seedling_points = []
-        for point in self.seedling_points:
-            print(point)
-
     def updateCosts(self, do_plot=False):
-
-        self.updateSeedlingPoints()
 
         RES = 0.2  # meters per pixel
         ORIGIN_X_PX = 40
@@ -369,32 +361,28 @@ class CostMapNode(Node):
 
         return pts_tfed
 
-    def planCb(self, msg: String):
+    def planCb(self, msg: PlantingPlan):
 
         print("Received plan!")
 
-        try:
-            plan_obj = json.loads(msg.data)
-        except json.decoder.JSONDecodeError as e:
-            self.get_logger().error(f"Could not process plan message: {e}")
-            return
+        self.seedling_points.clear()
 
-        try:
-            seedlings: list[object] = plan_obj["seedlings"]
+        lat, lon, alt = self.get_parameter("map_origin_lat_lon_alt_degrees").value
+        origin_x, origin_y, _, __ = utm.from_latlon(lat, lon)
 
-            self.seedling_points = []
-            print("Updated seedling_points!")
+        for seedling in msg.seedlings:
 
-            for seedling in seedlings:
-                seedling_x, seedling_y = self.latLonToMap(
-                    seedling["lat"], seedling["lon"]
-                )
+            seedling: Seedling
+            seedling_x, seedling_y, _, __ = utm.from_latlon(
+                seedling.latitude, seedling.longitude
+            )
 
-                self.seedling_points.append([seedling_x, seedling_y])
+            seedling_x = seedling_x - origin_x
+            seedling_y = seedling_y - origin_y
+
+            self.seedling_points.append([seedling_x, seedling_y])
 
             print(self.seedling_points)
-        except KeyError as e:
-            self.get_logger().error(f"{e}")
 
     def setUpParameters(self):
         param_desc = ParameterDescriptor()
