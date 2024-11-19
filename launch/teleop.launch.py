@@ -276,7 +276,7 @@ def generate_launch_description():
             plan_manager,
             # cost_maps,
             behavior_fsm,
-            trajectory_planner,
+            # trajectory_planner,
             # forest_planner,
             # route_planner,
             # heightmap_publisher,

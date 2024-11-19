@@ -32,7 +32,7 @@ class InterfaceNode(Node):
 
         self.planting_in_progress = False
         self.planting_start_time = time()
-        self.PLANTING_DURATION = 30  # sec. TODO: Check on this.
+        self.PLANTING_DURATION = 10  # sec. TODO: Check on this.
 
     def checkPlantingComplete(self):
         if (

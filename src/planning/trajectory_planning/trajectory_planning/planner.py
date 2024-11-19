@@ -490,14 +490,14 @@ class PlannerNode(Node):
 
         return yaw_error
 
-    def pointTurnFromYawError(self, yaw_error, omega=0.4):
+    def pointTurnFromYawError(self, yaw_error, omega=0.8, linear=0.2):
         cmd_msg = Twist()
 
         if yaw_error < 0:
             omega *= -1
 
         cmd_msg.angular.z = omega
-        cmd_msg.linear.x = 0.2
+        cmd_msg.linear.x = linear
 
         self.twist_pub.publish(cmd_msg)
 
@@ -564,14 +564,14 @@ class PlannerNode(Node):
             direction_string = "left" if yaw_error > 0 else "right"
             self.publishStatus(f"Turning {direction_string} toward seedling")
 
-            self.pointTurnFromYawError(yaw_error)
+            self.pointTurnFromYawError(yaw_error, omega=0.8, linear=0.4)
             return
 
         Kp_linear = 0.25
-        Kp_angular = 2.0
+        Kp_angular = 0.0
         target_speed = distance_remaining * Kp_linear
         target_angular = yaw_error * Kp_angular
-        SPEED_LIMIT = 1.0  # m/s
+        SPEED_LIMIT = 0.6  # m/s
         target_speed = min(target_speed, SPEED_LIMIT)
 
         # cmd_msg = Twist()

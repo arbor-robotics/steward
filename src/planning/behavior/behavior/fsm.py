@@ -46,6 +46,7 @@ class FsmNode(Node):
             Bool, "/behavior/is_planting", 1
         )
         self.status_pub = self.create_publisher(DiagnosticStatus, "/diagnostics", 1)
+        self.do_plant_pub = self.create_publisher(Empty, "/behavior/do_plant", 1)
 
         self.create_subscription(
             Empty, "/behavior/on_seedling_reached", self.onSeedlingReachedCb, 1
@@ -60,13 +61,14 @@ class FsmNode(Node):
         self.create_timer(0.1, self.publishCurrentMode)
         self.seedling_reached_distance = 1.0  # meters
         self.is_planting = False
-        self.PLANTING_DURATION = 3  # seconds
+        self.PLANTING_DURATION = 10  # seconds
         self.planting_start_time = time()
 
     def onSeedlingReachedCb(self, msg: Empty):
         print("Seedling reached!")
 
         self.is_planting = True
+        self.do_plant_pub.publish(Empty())
         self.planting_start_time = time()
 
     def publishStatus(self, desc: str, level=DiagnosticStatus.OK):

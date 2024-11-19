@@ -147,7 +147,8 @@ class CostMapNode(Node):
         )
 
         if self.move_to_helper_point:
-            closest_seedling[0] += 5.0
+            closest_seedling[0] += 3.0  # move east
+            closest_seedling[1] += 3.0  # move north
 
             dist = pdist([self.ego_pos, closest_seedling])[0]
             print(dist)
@@ -157,6 +158,8 @@ class CostMapNode(Node):
                 self.get_logger().info(
                     f"Helper point reached, moving to planting spot!"
                 )
+        else:
+            closest_seedling[0] -= 3.0
 
         # self.get_logger().info(f"Closest seedling: {closest_seedling}")
         if self.move_to_helper_point:

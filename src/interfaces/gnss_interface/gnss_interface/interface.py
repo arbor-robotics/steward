@@ -96,6 +96,8 @@ class InterfaceNode(Node):
         odom_msg.pose.pose.position.y = ego_y
         odom_msg.pose.pose.position.z = swift_msg.altitude
 
+        # This calculates the orientation for the entire robot.
+        # Yes, this assumes that we're on a flat plane.
         yaw = self.trueTrackToEnuRads(swift_msg.track)
         q = R.from_euler("xyz", [0.0, 0.0, yaw]).as_quat()
 

@@ -166,7 +166,7 @@ class PlanManager(Node):
         param_desc.type = ParameterType.PARAMETER_DOUBLE
         self.declare_parameter(
             "seedling_reached_distance",
-            0.01,
+            0.8,
         )
 
 
