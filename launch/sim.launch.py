@@ -91,7 +91,7 @@ def generate_launch_description():
             # cost_maps,
             plan_manager,
             behavior_fsm,
-            trajectory_planner,
+            # trajectory_planner,
             # CONTROL
             # SAFETY
             health_monitor,

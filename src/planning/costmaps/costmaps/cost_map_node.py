@@ -61,11 +61,11 @@ class CostMapNode(Node):
         self.seedling_points = []
         self.seedling_pts_bl = []
         self.cached_occ = np.zeros((100, 100))
-        self.move_to_helper_point = True
+        # self.move_to_helper_point = True
 
     def onSeedlingReached(self, msg: Empty):
         print("Seedling reached")
-        self.move_to_helper_point = True
+        # self.move_to_helper_point = True
 
     def occCb(self, msg: OccupancyGrid):
         arr = np.asarray(msg.data).reshape(msg.info.height, msg.info.width)
@@ -146,26 +146,26 @@ class CostMapNode(Node):
             (GRID_HEIGHT // DOWNSAMPLE_RATE, GRID_WIDTH // DOWNSAMPLE_RATE)
         )
 
-        if self.move_to_helper_point:
-            closest_seedling[0] += 3.0  # move east
-            closest_seedling[1] += 3.0  # move north
+        # if self.move_to_helper_point:
+        #     closest_seedling[0] += 3.0  # move east
+        #     closest_seedling[1] += 3.0  # move north
 
-            dist = pdist([self.ego_pos, closest_seedling])[0]
-            print(dist)
+        #     dist = pdist([self.ego_pos, closest_seedling])[0]
+        #     print(dist)
 
-            if dist < 1.0:
-                self.move_to_helper_point = False
-                self.get_logger().info(
-                    f"Helper point reached, moving to planting spot!"
-                )
-        else:
-            closest_seedling[0] -= 3.0
+        #     if dist < 1.0:
+        #         self.move_to_helper_point = False
+        #         self.get_logger().info(
+        #             f"Helper point reached, moving to planting spot!"
+        #         )
+        # else:
+        #     closest_seedling[0] -= 3.0
 
         # self.get_logger().info(f"Closest seedling: {closest_seedling}")
-        if self.move_to_helper_point:
-            self.get_logger().info(f"Moving to helped point")
-        else:
-            self.get_logger().info(f"Moving to real point")
+        # if self.move_to_helper_point:
+        #     self.get_logger().info(f"Moving to helped point")
+        # else:
+        #     self.get_logger().info(f"Moving to real point")
         closest_seedling_bl = self.transformToBaselink([closest_seedling])
 
         if closest_seedling_bl is None:
