@@ -101,6 +101,8 @@ class PlannerNode(Node):
         self.closest_point_bl = None
         self.remaining_seedling_count = 0
 
+        self.previous_twist = Twist()
+
         self.create_timer(0.1, self.updateTrajectorySimply)
 
     def closestPointBlCb(self, msg: PointStamped):
@@ -506,6 +508,38 @@ class PlannerNode(Node):
             DiagnosticStatus(message=desc, level=level, name=self.get_name())
         )
 
+    def getSmoothed(
+        self, in_twist: Twist, linear_max_delta=0.3, angular_max_delta=0.1
+    ) -> Twist:
+        previous_linear_speed = self.previous_twist.linear.x
+        previous_angular_speed = self.previous_twist.angular.z
+
+        requested_linear_speed = in_twist.linear.x
+        requested_angular_speed = in_twist.angular.z
+
+        if requested_linear_speed > previous_linear_speed + linear_max_delta:
+            smoothed_linear_speed = previous_linear_speed + linear_max_delta
+        elif requested_linear_speed < previous_linear_speed - linear_max_delta:
+            smoothed_linear_speed = previous_linear_speed - linear_max_delta
+        else:
+            smoothed_linear_speed = requested_linear_speed
+
+        if requested_angular_speed > previous_angular_speed + angular_max_delta:
+            smoothed_angular_speed = previous_angular_speed + angular_max_delta
+        elif requested_angular_speed < previous_angular_speed - angular_max_delta:
+            smoothed_angular_speed = previous_angular_speed - angular_max_delta
+        else:
+            smoothed_angular_speed = requested_angular_speed
+
+        print(f"{requested_linear_speed} -> {smoothed_linear_speed}")
+
+        smoothed_twist = Twist()
+        smoothed_twist.linear.x = smoothed_linear_speed
+        smoothed_twist.angular.z = smoothed_angular_speed
+
+        self.previous_twist = smoothed_twist
+        return smoothed_twist
+
     def updateTrajectorySimply(self):
 
         # if self.candidates_msg is not None:
@@ -515,16 +549,16 @@ class PlannerNode(Node):
 
         if self.current_mode == Mode.STOPPED:
             self.publishStatus("Paused")
-            self.twist_pub.publish(Twist())
+            self.twist_pub.publish(self.getSmoothed(Twist()))
             return
 
         if self.is_planting:
             self.publishStatus("Planting a seedling")
-            self.twist_pub.publish(Twist())
+            self.twist_pub.publish(self.getSmoothed(Twist()))
             return
 
         if self.current_mode == Mode.TELEOP:
-            self.twist_pub.publish(self.cached_teleop)
+            self.twist_pub.publish(self.getSmoothed(self.cached_teleop))
             self.publishStatus("Following teleop commands")
             return
 
@@ -534,13 +568,13 @@ class PlannerNode(Node):
 
         if self.closest_point_bl is None:
             self.get_logger().error("Seedling waypoint unknown. Stopping.")
-            self.twist_pub.publish(Twist())
+            self.twist_pub.publish(self.getSmoothed(Twist()))
             return
 
         if self.remaining_seedling_count < 1:
             # self.get_logger().error("Seedling waypoint unknown. Stopping.")
             self.publishStatus("Plan complete.")
-            self.twist_pub.publish(Twist())
+            self.twist_pub.publish(self.getSmoothed(Twist()))
             return
 
         # Check yaw error. If |yaw err| > pi/4 (45 deg), point turn.
@@ -568,7 +602,7 @@ class PlannerNode(Node):
             return
 
         Kp_linear = 0.25
-        Kp_angular = 0.0
+        Kp_angular = 1.0
         target_speed = distance_remaining * Kp_linear
         target_angular = yaw_error * Kp_angular
         SPEED_LIMIT = 0.6  # m/s
@@ -583,7 +617,7 @@ class PlannerNode(Node):
         cmd_msg = Twist()
         cmd_msg.linear.x = target_speed
         cmd_msg.angular.z = target_angular
-        self.twist_pub.publish(cmd_msg)
+        self.twist_pub.publish(self.getSmoothed(cmd_msg))
         self.publishStatus(
             f"Driving {target_speed:.2} m/s, {distance_remaining:.2}m away"
         )

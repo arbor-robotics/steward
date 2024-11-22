@@ -121,7 +121,7 @@ class PlanManager(Node):
             print(f"Could not get transform: {ex}")
             return
 
-        self.get_logger().info(f"Closest distance was {closest_distance}")
+        # self.get_logger().info(f"Closest distance was {closest_distance}")
 
         seedling_reached_distance = (
             self.get_parameter("seedling_reached_distance")
