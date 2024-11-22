@@ -18,6 +18,9 @@ setup(
     license="TODO: License declaration",  # See package.xml
     tests_require=["pytest"],
     entry_points={
-        "console_scripts": [f"planner = {package_name}.planner:main"],
+        "console_scripts": [
+            f"planner = {package_name}.planner:main",
+            f"twist_tester = {package_name}.twist_tester:main",
+        ],
     },
 )
