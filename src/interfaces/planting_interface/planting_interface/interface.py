@@ -34,6 +34,16 @@ class InterfaceNode(Node):
         self.planting_start_time = time()
         self.PLANTING_DURATION = 10  # sec. TODO: Check on this.
 
+        try:
+            port = self.get_parameter("serial_port").value
+            baud = self.get_parameter("serial_baud").value
+            self.ser = serial.Serial(port, baud, timeout=1)
+            self.get_logger().info("Connected to Arduino.")
+            print(self.ser.readlines(40))
+
+        except Exception as e:
+            self.get_logger().error(str(e))
+
     def checkPlantingComplete(self):
         if (
             self.planting_in_progress
@@ -44,28 +54,24 @@ class InterfaceNode(Node):
     def setUpParameters(self):
         param_desc = ParameterDescriptor()
         param_desc.type = ParameterType.PARAMETER_STRING
-        self.declare_parameter("serial_port", "/dev/ttyACM0")
+        self.declare_parameter("serial_port", "/dev/ttyACM1")
         param_desc = ParameterDescriptor()
         param_desc.type = ParameterType.PARAMETER_INTEGER
         self.declare_parameter("serial_baud", 9600)
 
     def doPlantCb(self, msg: Empty):
-        port = self.get_parameter("serial_port").value
-        baud = self.get_parameter("serial_baud").value
-        with serial.Serial(port, baud, timeout=1) as ser:
-            ser.writelines(["Plant".encode("utf_8")])
 
-            print(ser.readlines(40))
+        self.ser.writelines(["Plant".encode("utf_8")])
+
+        print(self.ser.readlines(40))
 
         self.get_logger().info("Sent Plant")
         self.planting_start_time = time()
         self.planting_in_progress = True
 
     def doPausePlantCb(self, msg: Empty):
-        port = self.get_parameter("serial_port").value
-        baud = self.get_parameter("serial_baud").value
-        with serial.Serial(port, baud, timeout=1) as ser:
-            ser.writelines(["Stop".encode("utf_8")])
+        self.ser.writelines(["stop".encode("utf_8")])
+        print(self.ser.readlines(40))
 
         self.get_logger().info("Sent Stop")
 

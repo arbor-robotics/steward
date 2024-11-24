@@ -265,7 +265,7 @@ def generate_launch_description():
                 description="Path to the YAML configuration file for the camera.",
             ),
             # INTERFACES
-            OpaqueFunction(function=zed_launch_setup),  # camera
+            # OpaqueFunction(function=zed_launch_setup),  # camera
             gnss,
             swiftnav_interface,
             rosbridge_server,

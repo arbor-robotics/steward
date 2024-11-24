@@ -501,7 +501,7 @@ class PlannerNode(Node):
         cmd_msg.angular.z = omega
         cmd_msg.linear.x = linear
 
-        self.twist_pub.publish(cmd_msg)
+        self.twist_pub.publish(self.getSmoothed(cmd_msg))
 
     def publishStatus(self, desc: str, level=DiagnosticStatus.OK):
         self.status_pub.publish(
@@ -509,7 +509,7 @@ class PlannerNode(Node):
         )
 
     def getSmoothed(
-        self, in_twist: Twist, linear_max_delta=0.3, angular_max_delta=0.1
+        self, in_twist: Twist, linear_max_delta=0.2, angular_max_delta=0.3
     ) -> Twist:
         previous_linear_speed = self.previous_twist.linear.x
         previous_angular_speed = self.previous_twist.angular.z
@@ -598,7 +598,7 @@ class PlannerNode(Node):
             direction_string = "left" if yaw_error > 0 else "right"
             self.publishStatus(f"Turning {direction_string} toward seedling")
 
-            self.pointTurnFromYawError(yaw_error, omega=0.8, linear=0.4)
+            self.pointTurnFromYawError(yaw_error, omega=1.2, linear=0.8)
             return
 
         Kp_linear = 0.25

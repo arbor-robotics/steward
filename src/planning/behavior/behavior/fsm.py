@@ -61,7 +61,7 @@ class FsmNode(Node):
         self.create_timer(0.1, self.publishCurrentMode)
         self.seedling_reached_distance = 1.0  # meters
         self.is_planting = False
-        self.PLANTING_DURATION = 3  # seconds
+        self.PLANTING_DURATION = 10  # seconds
         self.planting_start_time = time()
 
     def onSeedlingReachedCb(self, msg: Empty):
