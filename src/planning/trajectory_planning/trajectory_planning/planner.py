@@ -39,7 +39,7 @@ from steward_msgs.msg import (
     Seedling,
 )
 from sensor_msgs.msg import PointCloud2, PointField
-from std_msgs.msg import Header, String, Float32, Bool
+from std_msgs.msg import Header, String, Float32, Bool, Empty
 
 
 class Candidate:
@@ -58,6 +58,8 @@ class PlannerNode(Node):
 
         self.setUpParameters()
 
+        self.TARGET_DOWNHILL_YAW = np.pi  # radians from east
+
         self.create_subscription(String, "planning/plan_json", self.planCb, 1)
         self.create_subscription(Twist, "/cmd_vel/teleop", self.teleopTwistCb, 1)
         self.create_subscription(OccupancyGrid, "/cost/total", self.totalCostCb, 1)
@@ -68,6 +70,9 @@ class PlannerNode(Node):
         self.create_subscription(Mode, "/planning/current_mode", self.currentModeCb, 1)
         self.create_subscription(Bool, "/behavior/is_planting", self.isPlantingCb, 1)
         self.create_subscription(
+            Bool, "/behavior/is_turning_downhill", self.isTurningDownhillCb, 1
+        )
+        self.create_subscription(
             PointStamped, "/planning/closest_seedling_bl", self.closestPointBlCb, 1
         )
 
@@ -76,6 +81,9 @@ class PlannerNode(Node):
         )
 
         self.twist_pub = self.create_publisher(Twist, "/cmd_vel", 1)
+        self.facing_downhill_pub = self.create_publisher(
+            Empty, "/behavior/facing_downhill", 1
+        )
         self.twist_path_pub = self.create_publisher(Path, "/cmd_vel/path", 1)
         self.candidates_pub = self.create_publisher(
             TrajectoryCandidates, "/planning/candidates", 1
@@ -98,6 +106,7 @@ class PlannerNode(Node):
         self.cached_teleop = Twist()
         self.current_mode = Mode.STOPPED
         self.is_planting = False
+        self.is_turning_downhill = False
         self.closest_point_bl = None
         self.remaining_seedling_count = 0
 
@@ -110,6 +119,9 @@ class PlannerNode(Node):
 
     def isPlantingCb(self, msg: Bool):
         self.is_planting = msg.data
+
+    def isTurningDownhillCb(self, msg: Bool):
+        self.is_turning_downhill = msg.data
 
     def teleopTwistCb(self, msg: Twist):
         self.cached_teleop = msg
@@ -531,7 +543,7 @@ class PlannerNode(Node):
         else:
             smoothed_angular_speed = requested_angular_speed
 
-        print(f"{requested_linear_speed} -> {smoothed_linear_speed}")
+        # print(f"{requested_linear_speed} -> {smoothed_linear_speed}")
 
         smoothed_twist = Twist()
         smoothed_twist.linear.x = smoothed_linear_speed
@@ -550,6 +562,19 @@ class PlannerNode(Node):
         if self.current_mode == Mode.STOPPED:
             self.publishStatus("Paused")
             self.twist_pub.publish(self.getSmoothed(Twist()))
+            return
+
+        if self.is_turning_downhill:
+            self.publishStatus("Turning downhill before planting")
+            yaw_error = self.TARGET_DOWNHILL_YAW - self.ego_yaw
+            self.get_logger().info(f"{yaw_error}")
+
+            if abs(yaw_error) < 0.2:
+
+                self.facing_downhill_pub.publish(Empty())
+                return
+
+            self.pointTurnFromYawError(yaw_error, omega=1.2, linear=0.8)
             return
 
         if self.is_planting:
@@ -590,7 +615,7 @@ class PlannerNode(Node):
 
         yaw_error = self.getYawError(goal_point)
 
-        print(f"Yaw err: {yaw_error:.1f}, dist {distance_remaining:.1f}")
+        # print(f"Yaw err: {yaw_error:.1f}, dist {distance_remaining:.1f}")
 
         POINT_TURN_YAW_ERROR_THRESHOLD = np.pi / 8  # 22.5 degrees
         if abs(yaw_error) > POINT_TURN_YAW_ERROR_THRESHOLD:

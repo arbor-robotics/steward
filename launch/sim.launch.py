@@ -88,7 +88,7 @@ def generate_launch_description():
             # PERCEPTION
             occ_grid,
             # PLANNING
-            # cost_maps,
+            cost_maps,
             plan_manager,
             behavior_fsm,
             # trajectory_planner,

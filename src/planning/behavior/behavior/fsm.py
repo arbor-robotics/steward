@@ -45,11 +45,18 @@ class FsmNode(Node):
         self.planting_locked_pub = self.create_publisher(
             Bool, "/behavior/is_planting", 1
         )
+        self.turning_downhill_pub = self.create_publisher(
+            Bool, "/behavior/is_turning_downhill", 1
+        )
         self.status_pub = self.create_publisher(DiagnosticStatus, "/diagnostics", 1)
         self.do_plant_pub = self.create_publisher(Empty, "/behavior/do_plant", 1)
 
         self.create_subscription(
             Empty, "/behavior/on_seedling_reached", self.onSeedlingReachedCb, 1
+        )
+
+        self.create_subscription(
+            Empty, "/behavior/facing_downhill", self.onFacingDownhillCb, 1
         )
 
         self.tf_buffer = Buffer()
@@ -61,12 +68,17 @@ class FsmNode(Node):
         self.create_timer(0.1, self.publishCurrentMode)
         self.seedling_reached_distance = 1.0  # meters
         self.is_planting = False
+        self.is_turning_downhill = False
         self.PLANTING_DURATION = 10  # seconds
         self.planting_start_time = time()
 
     def onSeedlingReachedCb(self, msg: Empty):
-        print("Seedling reached!")
+        self.get_logger().info("Seedling reached!")
 
+        self.is_turning_downhill = True
+
+    def onFacingDownhillCb(self, msg: Empty):
+        self.is_turning_downhill = False
         self.is_planting = True
         self.do_plant_pub.publish(Empty())
         self.planting_start_time = time()
@@ -85,6 +97,7 @@ class FsmNode(Node):
             self.is_planting = False
 
         self.planting_locked_pub.publish(Bool(data=self.is_planting))
+        self.turning_downhill_pub.publish(Bool(data=self.is_turning_downhill))
 
     def requestedModeCb(self, msg: Mode):
         self.get_logger().info(f"Current mode is now {msg.level}")
