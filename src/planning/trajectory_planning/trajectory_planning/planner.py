@@ -121,6 +121,21 @@ class PlannerNode(Node):
         self.is_planting = msg.data
 
     def isTurningDownhillCb(self, msg: Bool):
+        if self.is_turning_downhill == msg.data:
+            return  # nothing has changed
+
+        if self.ego_yaw is None:
+            self.get_logger().error("Cannot start turning downhill. Ego yaw unknown.")
+            return
+        start_downhill_yaw = self.ego_yaw
+        self.downhill_error = np.pi - self.ego_yaw  # rads
+        self.downhill_turn_rate = 2.0  # rad/s
+        downhill_turn_time = abs(self.downhill_error) / self.downhill_turn_rate
+        self.downhill_stop_time = time() + downhill_turn_time
+
+        if self.downhill_error > 1.0:
+            self.downhill_stop_time += 2  # sed
+            print("Adding extra second")
         self.is_turning_downhill = msg.data
 
     def teleopTwistCb(self, msg: Twist):
@@ -564,31 +579,51 @@ class PlannerNode(Node):
             self.twist_pub.publish(self.getSmoothed(Twist()))
             return
 
-        if self.is_turning_downhill:
-            self.publishStatus("Turning downhill before planting")
-            yaw_error = self.TARGET_DOWNHILL_YAW - self.ego_yaw
-            self.get_logger().info(f"{yaw_error}")
-
-            if abs(yaw_error) < 0.2:
-
-                self.facing_downhill_pub.publish(Empty())
-                return
-
-            self.pointTurnFromYawError(yaw_error, omega=1.2, linear=0.8)
-            return
-
         if self.is_planting:
             self.publishStatus("Planting a seedling")
-            self.twist_pub.publish(self.getSmoothed(Twist()))
+            self.twist_pub.publish(
+                self.getSmoothed(Twist(), linear_max_delta=0.1, angular_max_delta=0.3)
+            )
             return
 
         if self.current_mode == Mode.TELEOP:
             self.twist_pub.publish(self.getSmoothed(self.cached_teleop))
             self.publishStatus("Following teleop commands")
+            # print(self.cached_teleop.linear.x)
             return
 
         elif self.current_mode == Mode.ASSISTED:
             self.get_logger().error("Assisted teleop is not yet supported!")
+            return
+
+        if self.is_turning_downhill:
+            if self.ego_yaw is None:
+                return
+
+            remaining_time = self.downhill_stop_time - time()
+            self.publishStatus(f"Turning downhill for {remaining_time} se")
+            cmd_msg = Twist()
+            if self.downhill_error < 0:  # turn right
+                cmd_msg.angular.z = self.downhill_turn_rate * -1
+            else:
+                cmd_msg.angular.z = self.downhill_turn_rate
+
+            self.twist_pub.publish(cmd_msg)
+
+            DOWNHILL_YAW = np.pi
+            yaw_error = DOWNHILL_YAW - self.ego_yaw
+
+            if abs(yaw_error) < 0.2:
+                # if remaining_time < 0:
+                self.is_turning_downhill = False
+                self.facing_downhill_pub.publish(Empty())
+                return
+
+            else:
+                self.get_logger().info(f"{remaining_time}")
+
+            self.pointTurnFromYawError(yaw_error, 0.6, 0.9)
+
             return
 
         if self.closest_point_bl is None:
@@ -623,7 +658,7 @@ class PlannerNode(Node):
             direction_string = "left" if yaw_error > 0 else "right"
             self.publishStatus(f"Turning {direction_string} toward seedling")
 
-            self.pointTurnFromYawError(yaw_error, omega=1.2, linear=0.8)
+            self.pointTurnFromYawError(yaw_error, omega=1.0, linear=0.8)
             return
 
         Kp_linear = 0.25

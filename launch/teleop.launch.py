@@ -274,7 +274,7 @@ def generate_launch_description():
             occ_grid,
             # PLANNING
             plan_manager,
-            # cost_maps,
+            cost_maps,
             behavior_fsm,
             # trajectory_planner,
             # forest_planner,
