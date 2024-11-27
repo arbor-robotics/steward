@@ -84,7 +84,7 @@ def generate_launch_description():
             # gnss,
             rosbridge_server,
             # warthog_bridge,
-            sim_bridge,
+            # sim_bridge,
             # PERCEPTION
             occ_grid,
             # PLANNING

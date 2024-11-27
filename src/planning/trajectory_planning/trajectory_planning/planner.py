@@ -19,6 +19,7 @@ from tf2_ros.transform_listener import TransformListener
 import utm
 import math
 from scipy.spatial.transform.rotation import Rotation as R
+from scipy import stats
 
 from skimage.draw import disk
 
@@ -90,7 +91,7 @@ class PlannerNode(Node):
         )
         self.status_pub = self.create_publisher(DiagnosticStatus, "/diagnostics", 1)
 
-        self.generateCandidates()
+        # self.generateCandidates()
 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
@@ -112,7 +113,8 @@ class PlannerNode(Node):
 
         self.previous_twist = Twist()
 
-        self.create_timer(0.1, self.updateTrajectorySimply)
+        # self.create_timer(0.1, self.updateTrajectorySimply)
+        self.create_timer(0.1, self.updateTrajectory)
 
     def closestPointBlCb(self, msg: PointStamped):
         self.closest_point_bl = [msg.point.x, msg.point.y]
@@ -273,8 +275,8 @@ class PlannerNode(Node):
 
         candidates.append([v, candidates_at_speed])
 
-        plt.figure()
-        plt.gca().set_aspect("equal")
+        # plt.figure()
+        # plt.gca().set_aspect("equal")
 
         candidates_msg = TrajectoryCandidates()
 
@@ -311,11 +313,11 @@ class PlannerNode(Node):
 
         # self.candidates_pub.publish(candidates_msg)
 
-        for trajectory in trajectories:
-            trajectory = np.asarray(trajectory)
-            plt.plot(trajectory[:, 0], trajectory[:, 1])
+        # for trajectory in trajectories:
+        #     trajectory = np.asarray(trajectory)
+        #     plt.plot(trajectory[:, 0], trajectory[:, 1])
 
-        plt.savefig("candidates.png")
+        # plt.savefig("candidates.png")
 
         self.candidates = candidates
 
@@ -649,22 +651,49 @@ class PlannerNode(Node):
 
         return
 
+    def publishAssistedTwist(self):
+        u_0 = self.cached_teleop
+        v_0 = u_0.linear.x
+        omega_0 = u_0.angular.z
+
+        N = 100  # number of sampled trajectories
+
+        weights = np.ones(N)
+        SIGMA_V = 0.3
+        SIGMA_OMEGA = 0.3
+
+        v_norm = stats.norm(v_0, SIGMA_V)
+        omega_norm = stats.norm(omega_0, SIGMA_OMEGA)
+        twist_samples = np.zeros((N, 2))
+        twist_samples[:, 0] = v_0 + (np.random.randn(N) * SIGMA_V)
+        twist_samples[:, 1] = omega_0 + (np.random.randn(N) * SIGMA_OMEGA)
+        # x = np.linspace(norm.ppf(0.01), norm.ppf(0.99), 100)
+        # plt.plot(x, norm.pdf(x), "r-", lw=5, alpha=0.6, label="norm pdf")
+        plt.show()
+        weights *= v_norm.pdf(twist_samples[:, 0])
+        weights *= omega_norm.pdf(twist_samples[:, 1])
+        plt.scatter(twist_samples[:, 0], twist_samples[:, 1], c=weights)
+        plt.colorbar()
+
+        self.twist_pub.publish(u_0)
+        self.publishStatus("Driving with automated assistance")
+
     def updateTrajectory(self):
 
-        if self.candidates_msg is not None:
-            self.candidates_pub.publish(self.candidates_msg)
-        else:
-            self.get_logger().warning("No candidates message available.")
+        # if self.candidates_msg is not None:
+        #     self.candidates_pub.publish(self.candidates_msg)
+        # else:
+        #     self.get_logger().warning("No candidates message available.")
 
         if self.current_mode == Mode.STOPPED:
             self.publishStatus("Paused")
             self.twist_pub.publish(Twist())
             return
 
-        if self.is_planting:
-            self.publishStatus("Planting a seedling")
-            self.twist_pub.publish(Twist())
-            return
+        # if self.is_planting:
+        #     self.publishStatus("Planting a seedling")
+        #     self.twist_pub.publish(Twist())
+        #     return
 
         if self.current_mode == Mode.TELEOP:
             self.twist_pub.publish(self.cached_teleop)
@@ -672,7 +701,8 @@ class PlannerNode(Node):
             return
 
         elif self.current_mode == Mode.ASSISTED:
-            self.get_logger().error("Assisted teleop is not yet supported!")
+            # self.get_logger().error("Assisted teleop is not yet supported!")
+            self.publishAssistedTwist()
             return
 
         if self.total_cost_map is None:

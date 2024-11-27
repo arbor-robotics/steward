@@ -88,9 +88,9 @@ class CostMapNode(Node):
         start = time()
 
         if self.seedling_points is None or len(self.seedling_points) < 1:
-            self.get_logger().warning(
-                "Seedling LOCS not available. Skipping distance to seedling cost."
-            )
+            # self.get_logger().warning(
+            #     "Seedling LOCS not available. Skipping distance to seedling cost."
+            # )
             return np.ones((100, 100)) * 100
 
         try:

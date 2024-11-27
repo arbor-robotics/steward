@@ -224,7 +224,7 @@ class WebsocketBridge(Node):
 
         # message = [MessageType.TELEOP] + bytearray(randbytes(2))
 
-        throttle_byte = int((self.throttle + 1) * 128 - 1)
+        throttle_byte = int((self.throttle / 10 + 1) * 128 - 1)
         turn_byte = int((self.turn + 1) * 128 - 1)
 
         print(f"{self.throttle} -> {throttle_byte}")
