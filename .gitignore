@@ -6,3 +6,5 @@ log/
 __pycache__/
 .jekyll-cache/
 *.pyc
+gnss.png
+particles.png

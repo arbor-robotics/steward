@@ -16,13 +16,22 @@ from cv_bridge import CvBridge
 from PIL import Image as PILImage
 import cv2
 from random import randbytes, randint
+from scipy.spatial.transform import Rotation as R
 import struct  # for byte <-> float conversions
+import utm  # for lat/lon to meter conversions
 
 # ROS message types
 from diagnostic_msgs.msg import DiagnosticStatus, KeyValue
-from geometry_msgs.msg import Twist, PoseWithCovarianceStamped
+from geometry_msgs.msg import (
+    Twist,
+    PoseWithCovarianceStamped,
+    TransformStamped,
+    Quaternion,
+)
+from gps_msgs.msg import GPSFix
 from sensor_msgs.msg import Image, CompressedImage, PointCloud2, PointField, NavSatFix
 from std_msgs.msg import Header, Float32
+from tf2_ros import TransformBroadcaster
 
 
 class MessageType:
@@ -168,12 +177,14 @@ class WebsocketBridge(Node):
             PoseWithCovarianceStamped, "/gnss/pose", 1
         )
 
-        self.gnss_fix_pub = self.create_publisher(NavSatFix, "/gnss/fix", 1)
+        self.gnss_fix_pub = self.create_publisher(GPSFix, "/gnss/gpsfix", 1)
         self.gnss_yaw_pub = self.create_publisher(Float32, "/gnss/yaw", 1)
 
         self.cmd_vel_sub = self.create_subscription(
             Twist, "/cmd_vel", self.cmdVelCb, 10
         )
+
+        self.tf_broadcaster = TransformBroadcaster(self)
 
         # CONTROLLER_FREQ = 100  # Hz
         self.create_timer(0.1, self.publishHeartbeat)
@@ -181,6 +192,7 @@ class WebsocketBridge(Node):
         self.teleop_connections: list[ServerConnection] = []
 
         self.connected_to_client = False
+        self.ego_quat = Quaternion()
 
         self.create_timer(0.1, self.publishStatus)
 
@@ -212,32 +224,32 @@ class WebsocketBridge(Node):
 
         # message = [MessageType.TELEOP] + bytearray(randbytes(2))
 
-        throttle_byte = int((self.throttle + 1) * 128 - 1)
+        throttle_byte = int((self.throttle / 10 + 1) * 128 - 1)
         turn_byte = int((self.turn + 1) * 128 - 1)
 
         print(f"{self.throttle} -> {throttle_byte}")
         print(f"{self.turn} -> {turn_byte}")
 
         if throttle_byte > 255:
-            throttle_byte = 255
             self.get_logger().warning(
-                f"Throttle byte {throttle_byte} was too big. Capping to 256."
+                f"Throttle byte {throttle_byte} was too big. Capping to 255."
             )
+            throttle_byte = 255
         elif throttle_byte < 0:
-            throttle_byte = 0
             self.get_logger().warning(
                 f"Throttle byte {throttle_byte} was too small. Capping to 0."
             )
+            throttle_byte = 0
         if turn_byte > 255:
-            turn_byte = 255
             self.get_logger().warning(
-                f"Turn byte {turn_byte} was too big. Capping to 256."
+                f"Turn byte {turn_byte} was too big. Capping to 255."
             )
+            turn_byte = 255
         elif turn_byte < 0:
-            turn_byte = 0
             self.get_logger().warning(
                 f"Turn byte {turn_byte} was too small. Capping to 0."
             )
+            turn_byte = 0
         message = bytearray([MessageType.TELEOP, throttle_byte, turn_byte])
         # print(f"{self.tur}, {turn_byte}")
 
@@ -258,7 +270,7 @@ class WebsocketBridge(Node):
         # self.get_logger().info("HELLO")
         self.throttle = msg.linear.x
         self.turn = msg.angular.z
-        self.get_logger().info(f"Received throt {self.throttle}, turn {self.turn}")
+        # self.get_logger().info(f"Received throt {self.throttle}, turn {self.turn}")
 
     def publishHeartbeat(self):
         """This is where a "heartbeat" or more detailed diagnostics should be published."""
@@ -300,8 +312,12 @@ class WebsocketBridge(Node):
         # plt.show()
 
     def setUpParameters(self):
-        """Not used. Declare ROS params here."""
-        pass
+        param_desc = ParameterDescriptor()
+        param_desc.type = ParameterType.PARAMETER_DOUBLE_ARRAY
+        self.declare_parameter(
+            "map_origin_lat_lon_alt_degrees",
+            [40.4431653, -79.9402844, 288.0961589],
+        )
 
     def handlePointcloudBytes(self, message: bytes):
 
@@ -356,9 +372,9 @@ class WebsocketBridge(Node):
         alt = struct.unpack("f", message[9:13])[0]
         yaw = struct.unpack("f", message[13:17])[0]
 
-        self.get_logger().info(f"{lat}, {lon}, {alt}, {yaw}")
+        # self.get_logger().info(f"{lat}, {lon}, {alt}, {yaw}")
 
-        fix_msg = NavSatFix()
+        fix_msg = GPSFix()
         fix_msg.header.frame_id = "earth"
         fix_msg.header.stamp = self.get_clock().now().to_msg()
 
@@ -370,6 +386,40 @@ class WebsocketBridge(Node):
 
         yaw_msg = Float32(data=yaw)
         self.gnss_yaw_pub.publish(yaw_msg)
+
+        x, y = self.latLonToMap(lat, lon)
+
+        t = TransformStamped()
+
+        t.header.stamp = self.get_clock().now().to_msg()
+        t.header.frame_id = "map"
+        t.child_frame_id = "base_link"  # TODO: Change to 'gnss'
+        t.transform.translation.x = x
+        t.transform.translation.y = y
+        t.transform.translation.z = alt
+        t.transform.rotation = self.ego_quat
+
+        # https://eater.net/quaternions/video/intro
+        # We assume that roll and pitch are zero.
+        # This assumption obviously fails if the robot is on a slope!
+        q = R.from_euler("z", yaw, degrees=False).as_quat()
+        t.transform.rotation.x = q[0]
+        t.transform.rotation.y = q[1]
+        t.transform.rotation.z = q[2]
+        t.transform.rotation.w = q[3]
+
+        self.tf_broadcaster.sendTransform(t)
+
+    def latLonToMap(self, lat: float, lon: float):
+        lat0, lon0, _ = self.get_parameter("map_origin_lat_lon_alt_degrees").value
+        origin_x, origin_y, _, __ = utm.from_latlon(lat0, lon0)
+
+        x, y, _, __ = utm.from_latlon(lat, lon)
+
+        x = x - origin_x
+        y = y - origin_y
+
+        return (x, y)
 
 
 import asyncio

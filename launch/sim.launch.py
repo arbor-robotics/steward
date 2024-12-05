@@ -73,6 +73,10 @@ def generate_launch_description():
     sim_bridge = Node(package="web_bridge", executable="sim_bridge")
     health_monitor = Node(package="health", executable="monitor")
     occ_grid = Node(package="costmaps", executable="occupancy_grid_node")
+    cost_maps = Node(package="costmaps", executable="cost_map_node")
+    behavior_fsm = Node(package="behavior", executable="fsm")
+    plan_manager = Node(package="behavior", executable="plan_manager")
+    trajectory_planner = Node(package="trajectory_planning", executable="planner")
 
     return LaunchDescription(
         [
@@ -80,20 +84,19 @@ def generate_launch_description():
             # gnss,
             rosbridge_server,
             # warthog_bridge,
-            sim_bridge,
+            # sim_bridge,
             # PERCEPTION
-            # PLANNING
-            # forest_planner,
-            # route_planner,
-            # heightmap_publisher,
             occ_grid,
+            # PLANNING
+            cost_maps,
+            plan_manager,
+            behavior_fsm,
+            # trajectory_planner,
             # CONTROL
-            # mvp_controller,
             # SAFETY
             health_monitor,
             # MISC.
             joint_state_publisher,
-            pose_to_transform_broadcaster,
             urdf_publisher,
         ]
     )

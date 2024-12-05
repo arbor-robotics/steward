@@ -3,8 +3,12 @@ from os import name, path, environ, getcwd
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.actions import IncludeLaunchDescription, SetEnvironmentVariable
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
-from launch.actions import ExecuteProcess, OpaqueFunction
+from launch.actions import (
+    DeclareLaunchArgument,
+    IncludeLaunchDescription,
+    ExecuteProcess,
+    OpaqueFunction,
+)
 from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration, Command, TextSubstitution
 from launch_ros.actions import Node
@@ -163,6 +167,7 @@ def zed_launch_setup(context, *args, **kwargs):
         # prefix=['gdbserver localhost:3000'],
         parameters=node_parameters,
         arguments=["--ros-args", "--log-level", "WARN"],
+        remappings=[("/diagnostics", "/diagnostics/zed")],
     )
 
     return [rsp_node, zed_wrapper_node]
@@ -207,9 +212,7 @@ def generate_launch_description():
         package="joint_state_publisher", executable="joint_state_publisher"
     )
 
-    pose_to_transform_broadcaster = Node(
-        package="state_estimation", executable="pose_to_transform_broadcaster"
-    )
+    particle_filter = Node(package="state_estimation", executable="particle_filter")
 
     forest_planner = Node(
         package="forest_planning",
@@ -225,6 +228,35 @@ def generate_launch_description():
     )
     warthog_bridge = Node(package="web_bridge", executable="warthog_bridge")
 
+    health_monitor = Node(package="health", executable="monitor")
+    occ_grid = Node(package="costmaps", executable="occupancy_grid_node")
+    cost_maps = Node(package="costmaps", executable="cost_map_node")
+
+    behavior_fsm = Node(package="behavior", executable="fsm")
+
+    swiftnav_interface = Node(
+        package="swiftnav_ros2_driver",
+        executable="sbp-to-ros",
+        parameters=[
+            path.join(
+                get_package_share_directory("swiftnav_ros2_driver"),
+                "config",
+                "settings.yaml",
+            )
+        ],
+        remappings=[
+            ("imu", "/gnss/imu"),
+            ("gpsfix", "/gnss/gpsfix"),
+            ("navsatfix", "/gnss/navsatfix"),
+            ("baseline", "/gnss/baseline"),
+            ("timereference", "/gnss/timereference"),
+            ("twistwithcovariancestamped", "/gnss/twist"),
+        ],
+    )
+
+    plan_manager = Node(package="behavior", executable="plan_manager")
+    trajectory_planner = Node(package="trajectory_planning", executable="planner")
+
     return LaunchDescription(
         [
             DeclareLaunchArgument(
@@ -233,20 +265,27 @@ def generate_launch_description():
                 description="Path to the YAML configuration file for the camera.",
             ),
             # INTERFACES
-            OpaqueFunction(function=zed_launch_setup),  # camera
+            # OpaqueFunction(function=zed_launch_setup),  # camera
             gnss,
+            swiftnav_interface,
             rosbridge_server,
             warthog_bridge,
             # PERCEPTION
+            occ_grid,
             # PLANNING
+            plan_manager,
+            # cost_maps,
+            behavior_fsm,
+            # trajectory_planner,
             # forest_planner,
             # route_planner,
             # heightmap_publisher,
             # CONTROL
             # mvp_controller,
+            # SAFETY
+            health_monitor,
             # MISC.
             joint_state_publisher,
-            pose_to_transform_broadcaster,
             urdf_publisher,
         ]
     )

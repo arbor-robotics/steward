@@ -9,11 +9,15 @@ from scipy.spatial.distance import pdist, squareform
 from matplotlib import pyplot as plt
 import cv2
 from enum import IntEnum
+from tf2_ros.buffer import Buffer
+from tf2_ros import TransformException
+from tf2_ros.transform_listener import TransformListener
+
 
 # ROS2 message definitions
 from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus, KeyValue
 from std_msgs.msg import Header
-from steward_msgs.msg import FailedChecks, HealthCheck, SystemwideStatus
+from steward_msgs.msg import FailedChecks, HealthCheck, SystemwideStatus, Mode
 from std_msgs.msg import Empty
 
 # class SystemwideStatus:
@@ -66,11 +70,25 @@ class HealthMonitor(Node):
         self.checks = [
             Check(
                 "BRIDGE_FAILURE",
-                inspects=["sim_bridge", "bridge/warthog"],
+                inspects=["sim_bridge", "warthog_bridge"],
                 period_sec=0.2,
                 triggers=SystemwideStatus.OUT_OF_SERVICE,
                 message="Steward is unable to connect to the Warthog or the simulator and cannot operate.",
-            )
+            ),
+            Check(
+                "TRAJECTORY_PLANNING_FAILURE",
+                inspects=["trajectory_planner"],
+                period_sec=0.2,
+                triggers=SystemwideStatus.OUT_OF_SERVICE,
+                message="Motion planner unavailable",
+            ),
+            Check(
+                "BEHAVIOR_FAILURE",
+                inspects=["behavior_fsm"],
+                period_sec=0.2,
+                triggers=SystemwideStatus.OUT_OF_SERVICE,
+                message="Behavior planner unavailable",
+            ),
         ]
 
         self.statuses = {}
@@ -82,15 +100,43 @@ class HealthMonitor(Node):
             SystemwideStatus, "/health/system_wide_status", 1
         )
 
+        self.current_mode_pub = self.create_publisher(Mode, "/health/current_mode", 1)
+
         self.failed_checks_pub = self.create_publisher(
             FailedChecks, "/health/failed_checks", 1
         )
 
         self.heartbeat_pub = self.create_publisher(Empty, "/hb/global", 1)
 
+        self.tf_buffer = Buffer()
+        self.tf_listener = TransformListener(self.tf_buffer, self)
+
         self.create_timer(0.02, self.aggregate)
 
         self.create_timer(0.5, self.publishGlobalHeartbeat)
+        self.create_timer(0.5, self.checkTransforms)
+
+        self.STATE_ESTIMATION_AVAILABLE = False
+        self.state_estimation_check_msg = HealthCheck()
+
+        self.current_mode = Mode.STOPPED
+
+    def checkTransforms(self):
+        check_msg = HealthCheck()
+        check_msg.code = "LOCALIZATION_UNAVAILABLE"
+        check_msg.message = "Steward doesn't know where it is. Could not find base_link -> map transform. Is the localization node OK? Is the GNSS interface OK?"
+        check_msg.trigger_status = SystemwideStatus()
+        check_msg.trigger_status.level = SystemwideStatus.TELEOP_ONLY
+        try:
+            bl_to_map_tf = self.tf_buffer.lookup_transform(
+                "map", "base_link", rclpy.time.Time()
+            )
+            self.STATE_ESTIMATION_AVAILABLE = True
+
+        except TransformException as ex:
+            self.STATE_ESTIMATION_AVAILABLE = False
+
+        self.state_estimation_check_msg = check_msg
 
     def publishGlobalHeartbeat(self):
         self.heartbeat_pub.publish(Empty())
@@ -127,8 +173,9 @@ class HealthMonitor(Node):
                     if status.level <= check.max_status:
                         triggered = False
 
-            if (triggered or is_stale) and check.trigger_status > systemwide_status:
-                systemwide_status = check.trigger_status
+            if triggered or is_stale:
+                if check.trigger_status > systemwide_status:
+                    systemwide_status = check.trigger_status
 
                 check_msg = HealthCheck()
                 check_msg.code = check.code
@@ -136,6 +183,12 @@ class HealthMonitor(Node):
                 check_msg.trigger_status = SystemwideStatus()
                 check_msg.trigger_status.level = check.trigger_status
                 failed_checks.append(check_msg)
+
+        if not self.STATE_ESTIMATION_AVAILABLE:
+            failed_checks.append(self.state_estimation_check_msg)
+            systemwide_status = max(
+                self.state_estimation_check_msg.trigger_status.level, systemwide_status
+            )
 
         msg = SystemwideStatus()
         msg.level = systemwide_status
