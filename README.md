@@ -1,3 +1,6 @@
+> [!NOTE]  
+> Steward OS is no longer being developed by Arbor Robotics and has been archived.
+
 # Steward OS
 
 A friendly tree-planting companion developed by Arbor Robotics at CMU.
